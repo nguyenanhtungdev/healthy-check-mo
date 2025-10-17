@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
+  TextInput,
   Image,
   Alert,
 } from "react-native";
@@ -32,6 +33,18 @@ const ProfileScreen = ({ onLogout, accountId }) => {
   const [uploading, setUploading] = useState(false);
   const [account, setAccount] = useState(null);
   const [localAccountId, setLocalAccountId] = useState(accountId || null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    birthday: "",
+    address: "",
+    height: "",
+    weight: "",
+    bloodType: "",
+  });
 
   const pickAndUploadImage = async () => {
     try {
@@ -213,6 +226,164 @@ const ProfileScreen = ({ onLogout, accountId }) => {
     })();
   }, []);
 
+  // Fetch real profile from backend using token from storage
+  React.useEffect(() => {
+    (async () => {
+      try {
+        setLoadingProfile(true);
+        // try common AsyncStorage keys for token
+        const tokenKeys = [
+          "token",
+          "accessToken",
+          "authToken",
+          "authorization",
+        ];
+        let token = null;
+        for (const k of tokenKeys) {
+          const t = await AsyncStorage.getItem(k);
+          if (t) {
+            token = t;
+            break;
+          }
+        }
+        // also check inside 'account' object
+        if (!token) {
+          const accStr = await AsyncStorage.getItem("account");
+          if (accStr) {
+            try {
+              const acc = JSON.parse(accStr);
+              token = acc?.token || acc?.accessToken || token;
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+
+        if (!token) {
+          console.warn(
+            "No auth token found in AsyncStorage; skipping profile fetch."
+          );
+          return;
+        }
+
+        // Use provided URL for get-account (user provided)
+        const API_BASE = config.API_BASE;
+        const backendUrl = `${API_BASE}/accounts/get-account`;
+        const res = await fetch(backendUrl, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          console.warn("Failed to fetch profile:", res.status, text);
+          return;
+        }
+        const json = await res.json();
+        // assume json contains { fullName, email, phone, birthday, address, height, weight, bloodType, imageUrl, accountId }
+        setAccount(json);
+        setAvatarUrl(json.imageUrl || json.avatarUrl || null);
+        setLocalAccountId(json.accountId || localAccountId);
+        setForm({
+          fullName: json.fullName || json.name || "",
+          email: json.email || "",
+          phone: json.phone || json.mobile || "",
+          birthday: json.birthday || "",
+          address: json.address || "",
+          height: json.height ? String(json.height) : "",
+          weight: json.weight ? String(json.weight) : "",
+          bloodType: json.bloodType || json.blood || "",
+        });
+        // persist into account storage if existing
+        try {
+          await AsyncStorage.setItem("account", JSON.stringify(json));
+        } catch (e) {
+          /* ignore */
+        }
+      } catch (e) {
+        console.warn("Error loading profile", e);
+      } finally {
+        setLoadingProfile(false);
+      }
+    })();
+  }, []);
+
+  const updateProfile = async () => {
+    // save locally first
+    const updated = {
+      ...account,
+      fullName: form.fullName,
+      email: form.email,
+      phone: form.phone,
+      birthday: form.birthday,
+      address: form.address,
+      height: form.height,
+      weight: form.weight,
+      bloodType: form.bloodType,
+      imageUrl: avatarUrl,
+    };
+    setAccount(updated);
+    try {
+      await AsyncStorage.setItem("account", JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Failed to persist updated account locally", e);
+    }
+
+    // attempt to send to backend (you may need to adjust endpoint)
+    try {
+      // read token again
+      let token = await AsyncStorage.getItem("token");
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {}
+        }
+      }
+      if (!token) {
+        Alert.alert(
+          "Lưu cục bộ",
+          "Thông tin đã được cập nhật cục bộ nhưng chưa gửi được lên server (thiếu token)."
+        );
+        setEditing(false);
+        return;
+      }
+
+      const API_ROOT = config.API_BASE || "http://localhost:8080";
+      const updateUrl = `${API_ROOT.replace(
+        /\/$/,
+        ""
+      )}/accounts/update-account`;
+      const res = await fetch(updateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        Alert.alert(
+          "Lỗi khi cập nhật",
+          `Server returned ${res.status}: ${text}`
+        );
+      } else {
+        const j = await res.json();
+        Alert.alert(j.message || "Cập nhật thông tin thành công");
+      }
+    } catch (e) {
+      console.warn("Failed to send updated profile to backend", e);
+      Alert.alert(
+        "Lưu cục bộ",
+        "Thông tin đã được cập nhật cục bộ nhưng gửi lên server thất bại."
+      );
+    } finally {
+      setEditing(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Profile Info Card */}
@@ -247,40 +418,85 @@ const ProfileScreen = ({ onLogout, accountId }) => {
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.profileName}>Nguyễn Văn A</Text>
-        <Text style={styles.profileEmail}>nguyenvana@email.com</Text>
+        {editing ? (
+          <View style={{ alignItems: "center" }}>
+            <TextInput
+              value={form.fullName}
+              onChangeText={(t) => setForm((s) => ({ ...s, fullName: t }))}
+              style={[styles.input, { textAlign: "center", padding: 6 }]}
+              placeholder="Họ và tên"
+            />
+            <TextInput
+              value={form.email}
+              onChangeText={(t) => setForm((s) => ({ ...s, email: t }))}
+              style={[
+                styles.input,
+                { textAlign: "center", padding: 6, marginTop: 6 },
+              ]}
+              placeholder="Email"
+            />
+            <View style={{ flexDirection: "row", marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={() => setEditing(false)}
+                style={{ marginRight: 12 }}
+              >
+                <Text style={{ color: "#666" }}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={updateProfile}>
+                <Text style={{ color: "#667eea", fontWeight: "700" }}>Lưu</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={{ alignItems: "center" }}>
+            <Text style={styles.profileName}>{form.fullName || "-"}</Text>
+            <Text style={styles.profileEmail}>{form.email || "-"}</Text>
+            <TouchableOpacity
+              onPress={() => setEditing(true)}
+              style={{ marginTop: 8 }}
+            >
+              <Text style={{ color: "#667eea", fontWeight: "700" }}>
+                Chỉnh sửa
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Personal Info Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
 
-        <MenuItem
+        <EditableField
           icon="person-outline"
           title="Họ và tên"
-          subtitle="Nguyễn Văn A"
-          onPress={() => console.log("Edit name")}
+          value={form.fullName}
+          onChange={(v) => setForm((s) => ({ ...s, fullName: v }))}
+          editing={editing}
         />
 
-        <MenuItem
+        <EditableField
           icon="call-outline"
           title="Số điện thoại"
-          subtitle="0123 456 789"
-          onPress={() => console.log("Edit phone")}
+          value={form.phone}
+          onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
+          editing={editing}
         />
 
-        <MenuItem
+        <EditableField
           icon="calendar-outline"
           title="Ngày sinh"
-          subtitle="01/01/1990"
-          onPress={() => console.log("Edit birthday")}
+          value={form.birthday}
+          onChange={(v) => setForm((s) => ({ ...s, birthday: v }))}
+          editing={editing}
         />
 
-        <MenuItem
+        <EditableField
           icon="location-outline"
           title="Địa chỉ"
-          subtitle="Quận 1, TP.HCM"
-          onPress={() => console.log("Edit address")}
+          value={form.address}
+          onChange={(v) => setForm((s) => ({ ...s, address: v }))}
+          editing={editing}
         />
       </View>
 
@@ -494,6 +710,32 @@ const MenuItem = ({ icon, title, subtitle, onPress }) => (
   </TouchableOpacity>
 );
 
+const EditableField = ({ icon, title, value, onChange, editing }) => (
+  <View style={styles.menuItem}>
+    <View style={styles.menuItemLeft}>
+      <View style={styles.iconContainer}>
+        <Ionicons name={icon} size={22} color="#667eea" />
+      </View>
+      <View style={styles.menuItemText}>
+        <Text style={styles.menuItemTitle}>{title}</Text>
+        {editing ? (
+          <TextInput
+            value={value}
+            onChangeText={onChange}
+            style={styles.fieldInput}
+            placeholder={`Nhập ${title}`}
+          />
+        ) : (
+          <Text style={styles.menuItemSubtitle}>{value || "-"}</Text>
+        )}
+      </View>
+    </View>
+    {editing ? null : (
+      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+    )}
+  </View>
+);
+
 const SettingItem = ({ icon, title, subtitle, value, onValueChange }) => (
   <View style={styles.menuItem}>
     <View style={styles.menuItemLeft}>
@@ -651,6 +893,11 @@ const styles = StyleSheet.create({
   menuItemSubtitle: {
     fontSize: 13,
     color: "#999",
+  },
+  fieldInput: {
+    fontSize: 14,
+    color: "#333",
+    paddingVertical: 6,
   },
   logoutButton: {
     flexDirection: "row",
