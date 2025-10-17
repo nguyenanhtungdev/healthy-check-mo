@@ -11,17 +11,19 @@ import {
   Platform,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import Home from "./Home";
+import HomeScreen from "./HomeScreen";
 import SignUp from "./SignUp";
 import ResetPassword from "./ResetPassword";
 import config from "../config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width, height } = Dimensions.get("window");
 
-const Login = ({ navigation }) => {
+const Login = ({ navigation, onLoginSuccess }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -31,11 +33,12 @@ const Login = ({ navigation }) => {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const inputsRef = useRef([]);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // auth state is handled by App.jsx; signal success via onLoginSuccess()
   const [showSignUp, setShowSignUp] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [showLoggingSpinner, setShowLoggingSpinner] = useState(false);
 
   // runtime API base from config.js (can be set via app.json extra or env)
   const API_BASE = config.API_BASE;
@@ -91,13 +94,21 @@ const Login = ({ navigation }) => {
         const msg = (json && json.message) || "Login successful.";
         setMessage(msg);
         setSuccess(true);
-        setIsLoggedIn(true);
-        // show explicit alert so user sees success
+        // store account info in local storage for later
         try {
-          Alert.alert("Success", msg);
+          if (json) {
+            await AsyncStorage.setItem("account", JSON.stringify(json));
+          }
         } catch (e) {
-          /* ignore */
+          console.warn("Failed to save account to storage", e);
         }
+        // don't show an Alert — just show the loading overlay then proceed
+        // show ActivityIndicator overlay briefly, then notify parent
+        setShowLoggingSpinner(true);
+        setTimeout(() => {
+          setShowLoggingSpinner(false);
+          onLoginSuccess && onLoginSuccess();
+        }, 900);
         // optionally store token: json?.token
       }
     } catch (err) {
@@ -137,25 +148,14 @@ const Login = ({ navigation }) => {
 
   // verifyRegister removed from Login (use SignUp screen instead)
 
-  if (isLoggedIn) {
-    return (
-      <Home
-        onLogout={() => {
-          setIsLoggedIn(false);
-          setSuccess(false);
-          setCodeDigits(new Array(6).fill(""));
-          setMessage("");
-        }}
-      />
-    );
-  }
-
+  // If the app wants to show SignUp/Reset as separate screens inside this component
+  // we still use local flags; when registration succeeds we call onLoginSuccess()
   if (showSignUp) {
     return (
       <SignUp
         onRegistered={() => {
           setShowSignUp(false);
-          setIsLoggedIn(true);
+          onLoginSuccess && onLoginSuccess();
         }}
         onCancel={() => setShowSignUp(false)}
       />
@@ -201,6 +201,15 @@ const Login = ({ navigation }) => {
             {/* Form Container */}
             <View style={styles.formContainer}>
               <Text style={[styles.title, { textAlign: "center" }]}>Login</Text>
+              <View style={styles.subtitleRow}>
+                <Ionicons
+                  name="sparkles-outline"
+                  size={20}
+                  color="#f59e0b"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.subtitle}>Welcome back</Text>
+              </View>
               {/* Email Input */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Email</Text>
@@ -284,19 +293,7 @@ const Login = ({ navigation }) => {
                 </View>
               ) : null}
 
-              {success ? (
-                <View style={styles.successBanner}>
-                  <Text
-                    style={{
-                      color: "#065f46",
-                      textAlign: "center",
-                      fontWeight: "600",
-                    }}
-                  >
-                    Đăng nhập/Đăng ký thành công!
-                  </Text>
-                </View>
-              ) : null}
+              {/* success banner intentionally removed; overlay spinner is used */}
 
               {/* removed social login UI per request */}
 
@@ -309,8 +306,15 @@ const Login = ({ navigation }) => {
               </View>
             </View>
           </Animated.View>
+          {/* spinner overlay moved outside ScrollView to cover full screen */}
         </ScrollView>
       </KeyboardAvoidingView>
+      {showLoggingSpinner && (
+        <View style={styles.spinnerOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.spinnerText}>Đang đăng nhập...</Text>
+        </View>
+      )}
     </LinearGradient>
   );
 };
@@ -478,7 +482,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 12,
     color: "#111",
@@ -496,11 +500,46 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
+  subtitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  subtitle: {
+    color: "#06b6d4", // teal/cyan
+    fontSize: 18,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    textShadowColor: "rgba(6,182,212,0.18)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
   successBanner: {
     backgroundColor: "#D1FAE5",
     borderRadius: 12,
     padding: 10,
     marginTop: 12,
+  },
+  spinnerOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  spinnerText: {
+    color: "#fff",
+    marginTop: 12,
+    fontWeight: "700",
+    fontSize: 16,
   },
 });
 

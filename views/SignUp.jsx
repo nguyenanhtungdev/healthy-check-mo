@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 12,

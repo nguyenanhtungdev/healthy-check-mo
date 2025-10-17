@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 12,
     color: "#111",
