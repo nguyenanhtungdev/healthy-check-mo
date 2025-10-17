@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -10,18 +10,35 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import Home from "./Home";
+import SignUp from "./SignUp";
+import ResetPassword from "./ResetPassword";
+import config from "../config";
 
 const { width, height } = Dimensions.get("window");
 
 const Login = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [codeDigits, setCodeDigits] = useState(new Array(6).fill(""));
   const [showPassword, setShowPassword] = useState(false);
+  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const inputsRef = useRef([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showSignUp, setShowSignUp] = useState(false);
+  const [showReset, setShowReset] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+
+  // runtime API base from config.js (can be set via app.json extra or env)
+  const API_BASE = config.API_BASE;
 
   React.useEffect(() => {
     Animated.parallel([
@@ -40,10 +57,122 @@ const Login = ({ navigation }) => {
   }, []);
 
   const handleSignIn = () => {
-    console.log("Email:", email);
-    console.log("Password:", password);
-    // Xử lý đăng nhập
+    // Deprecated: use handleLogin which calls the API
   };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setMessage("Please enter email and password.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: email, password }),
+      });
+      // Read response as text first (server may return empty body)
+      const text = await res.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch (e) {
+        // not JSON
+        json = null;
+      }
+
+      if (!res.ok) {
+        const msg = (json && json.message) || text || "Login failed.";
+        setMessage(msg);
+        setSuccess(false);
+      } else {
+        const msg = (json && json.message) || "Login successful.";
+        setMessage(msg);
+        setSuccess(true);
+        setIsLoggedIn(true);
+        // show explicit alert so user sees success
+        try {
+          Alert.alert("Success", msg);
+        } catch (e) {
+          /* ignore */
+        }
+        // optionally store token: json?.token
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage("Network error while logging in.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendCode = async () => {
+    if (!email) {
+      setMessage("Please enter your email.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/send-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setMessage(json.message || "Failed to send code.");
+      } else {
+        setMessage(json.message || "Code sent. Check your email.");
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage("Network error while sending code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // verifyRegister removed from Login (use SignUp screen instead)
+
+  if (isLoggedIn) {
+    return (
+      <Home
+        onLogout={() => {
+          setIsLoggedIn(false);
+          setSuccess(false);
+          setCodeDigits(new Array(6).fill(""));
+          setMessage("");
+        }}
+      />
+    );
+  }
+
+  if (showSignUp) {
+    return (
+      <SignUp
+        onRegistered={() => {
+          setShowSignUp(false);
+          setIsLoggedIn(true);
+        }}
+        onCancel={() => setShowSignUp(false)}
+      />
+    );
+  }
+
+  if (showReset) {
+    return (
+      <ResetPassword
+        onReset={() => {
+          setShowReset(false);
+          setMessage("Password reset successful. Please sign in.");
+        }}
+        onCancel={() => setShowReset(false)}
+      />
+    );
+  }
 
   return (
     <LinearGradient
@@ -71,6 +200,7 @@ const Login = ({ navigation }) => {
           >
             {/* Form Container */}
             <View style={styles.formContainer}>
+              <Text style={[styles.title, { textAlign: "center" }]}>Login</Text>
               {/* Email Input */}
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Email</Text>
@@ -124,12 +254,15 @@ const Login = ({ navigation }) => {
               </View>
 
               {/* Forgot Password */}
-              <TouchableOpacity style={styles.forgotPassword}>
+              <TouchableOpacity
+                style={styles.forgotPassword}
+                onPress={() => setShowReset(true)}
+              >
                 <Text style={styles.forgotPasswordText}>Forgot password?</Text>
               </TouchableOpacity>
 
               {/* Sign In Button */}
-              <TouchableOpacity onPress={handleSignIn} activeOpacity={0.8}>
+              <TouchableOpacity onPress={handleLogin} activeOpacity={0.8}>
                 <LinearGradient
                   colors={["#00d4ff", "#667eea"]}
                   style={styles.signInButton}
@@ -140,30 +273,37 @@ const Login = ({ navigation }) => {
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Divider */}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR LOG IN WITH</Text>
-                <View style={styles.dividerLine} />
-              </View>
+              {/* Verify/Register moved to SignUp screen */}
 
-              {/* Social Login */}
-              <View style={styles.socialContainer}>
-                <TouchableOpacity style={styles.socialButton}>
-                  <Ionicons name="logo-google" size={24} color="#EA4335" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.socialButton}>
-                  <Ionicons name="logo-facebook" size={24} color="#4267B2" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.socialButton}>
-                  <Ionicons name="logo-apple" size={24} color="#000" />
-                </TouchableOpacity>
-              </View>
+              {/* Message */}
+              {message ? (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={{ color: "#333", textAlign: "center" }}>
+                    {message}
+                  </Text>
+                </View>
+              ) : null}
+
+              {success ? (
+                <View style={styles.successBanner}>
+                  <Text
+                    style={{
+                      color: "#065f46",
+                      textAlign: "center",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Đăng nhập/Đăng ký thành công!
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* removed social login UI per request */}
 
               {/* Sign Up */}
               <View style={styles.signUpContainer}>
                 <Text style={styles.signUpText}>Don't have an account? </Text>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowSignUp(true)}>
                   <Text style={styles.signUpLink}>Sign up</Text>
                 </TouchableOpacity>
               </View>
@@ -320,6 +460,47 @@ const styles = StyleSheet.create({
     color: "#667eea",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  codeContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: Math.min(width - 160, 280),
+  },
+  codeBox: {
+    width: 44,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    marginHorizontal: 6,
+    fontSize: 18,
+    color: "#333",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 12,
+    color: "#111",
+    textAlign: "center",
+  },
+  sendCodeButton: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendCodeButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  successBanner: {
+    backgroundColor: "#D1FAE5",
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
   },
 });
 
