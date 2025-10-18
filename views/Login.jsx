@@ -94,22 +94,47 @@ const Login = ({ navigation, onLoginSuccess }) => {
         const msg = (json && json.message) || "Login successful.";
         setMessage(msg);
         setSuccess(true);
-        // store account info in local storage for later
+        // store account info and token in local storage for later use
         try {
           if (json) {
+            // Persist the whole account object for convenience
             await AsyncStorage.setItem("account", JSON.stringify(json));
+
+            // Detect common token fields returned by various backends
+            const tokenCandidate =
+              json?.token ||
+              json?.accessToken ||
+              json?.access_token ||
+              (json.data &&
+                (json.data.token ||
+                  json.data.accessToken ||
+                  json.data.access_token)) ||
+              null;
+
+            if (tokenCandidate) {
+              try {
+                await AsyncStorage.setItem("token", tokenCandidate);
+              } catch (e) {
+                console.warn("Failed to save token to storage", e);
+              }
+            }
           }
         } catch (e) {
-          console.warn("Failed to save account to storage", e);
+          console.warn("Failed to save account/token to storage", e);
         }
-        // don't show an Alert — just show the loading overlay then proceed
+
         // show ActivityIndicator overlay briefly, then notify parent
         setShowLoggingSpinner(true);
         setTimeout(() => {
           setShowLoggingSpinner(false);
-          onLoginSuccess && onLoginSuccess();
+          // notify parent that login succeeded; pass account if available
+          try {
+            const accountObj = json || null;
+            onLoginSuccess && onLoginSuccess(accountObj);
+          } catch (_) {
+            onLoginSuccess && onLoginSuccess();
+          }
         }, 900);
-        // optionally store token: json?.token
       }
     } catch (err) {
       console.error(err);
