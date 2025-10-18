@@ -126,7 +126,9 @@ const styles = StyleSheet.create({
     width: 40,
   },
   content: {
-    padding: 20,
+    paddingBottom: 20,
+    paddingLeft: 20,
+    paddingRight: 20,
   },
   introSection: {
     backgroundColor: "#fff",

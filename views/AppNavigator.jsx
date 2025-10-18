@@ -1,7 +1,9 @@
 import React from "react";
+import { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { View, StyleSheet } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import HomeScreen from "./HomeScreen";
 import ContactScreen from "./ContactScreen";
@@ -13,6 +15,15 @@ const Tab = createBottomTabNavigator();
 const PRIMARY = "#667eea";
 
 const AppNavigator = ({ onLogout }) => {
+  const [accountId, setAccountId] = useState(null);
+  useEffect(() => {
+    AsyncStorage.getItem("account").then((accStr) => {
+      if (accStr) {
+        const acc = JSON.parse(accStr);
+        setAccountId(acc.id || acc.accountId);
+      }
+    });
+  }, []);
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -71,7 +82,9 @@ const AppNavigator = ({ onLogout }) => {
         options={{ tabBarLabel: "Liên hệ" }}
       />
       <Tab.Screen name="Profile" options={{ tabBarLabel: "Hồ sơ" }}>
-        {(props) => <ProfileScreen {...props} onLogout={onLogout} />}
+        {(props) => (
+          <ProfileScreen {...props} onLogout={onLogout} accountId={accountId} />
+        )}
       </Tab.Screen>
     </Tab.Navigator>
   );
