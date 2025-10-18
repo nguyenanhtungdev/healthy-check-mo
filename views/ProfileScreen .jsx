@@ -25,7 +25,7 @@ const CLOUDINARY_UPLOAD_PRESET = "healthy-check-image"; // <-- set your unsigned
 // Recommended: keep false and let the server delete the old image AFTER a successful upload to avoid data loss
 const DELETE_OLD_BEFORE_UPLOAD = false;
 
-const ProfileScreen = ({ onLogout, accountId }) => {
+const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [dataSharing, setDataSharing] = useState(false);
   const [biometricAuth, setBiometricAuth] = useState(true);
@@ -48,6 +48,8 @@ const ProfileScreen = ({ onLogout, accountId }) => {
     gender: null,
   });
   const [isSaving, setIsSaving] = useState(false);
+  // navigation is provided by the navigator; use it to push help/terms/about/privacy
+  // (ProfileScreen is used inside a Tab navigator which is nested in a root stack)
 
   const pickAndUploadImage = async () => {
     try {
@@ -773,18 +775,23 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         <MenuItem
           icon="help-circle-outline"
           title="Trợ giúp & Hỗ trợ"
-          onPress={() => console.log("Help")}
+          onPress={() => navigation && navigation.navigate("Help")}
         />
         <MenuItem
           icon="document-text-outline"
           title="Điều khoản & Chính sách"
-          onPress={() => console.log("Terms")}
+          onPress={() => navigation && navigation.navigate("Terms")}
         />
         <MenuItem
           icon="information-circle-outline"
           title="Giới thiệu"
           subtitle="Phiên bản 1.0.0"
-          onPress={() => console.log("About")}
+          onPress={() => navigation && navigation.navigate("About")}
+        />
+        <MenuItem
+          icon="shield-checkmark-outline"
+          title="Quyền riêng tư & Ứng dụng"
+          onPress={() => navigation && navigation.navigate("Privacy")}
         />
       </View>
 
@@ -802,6 +809,8 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         <Ionicons name="log-out-outline" size={20} color="#ef4444" />
         <Text style={styles.logoutText}>Đăng xuất</Text>
       </TouchableOpacity>
+
+      {/* Help/Terms/About/Privacy are handled via navigation.navigate from the Profile menu */}
 
       <View style={styles.bottomSpacer} />
     </RefreshableScrollView>
@@ -1253,6 +1262,7 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 40,
   },
+  // modalOverlay removed — use stack navigation instead
 });
 
 export default ProfileScreen;

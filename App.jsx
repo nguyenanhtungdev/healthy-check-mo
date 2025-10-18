@@ -3,8 +3,14 @@ import { StatusBar, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+const RootStack = createNativeStackNavigator();
 import Login from "./views/Login";
 import AppNavigator from "./views/AppNavigator";
+import HelpScreen from "./views/HelpScreen";
+import TermsScreen from "./views/TermsScreen";
+import AboutScreen from "./views/AboutScreen";
+import PrivacyScreen from "./views/PrivacyScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Minimal JWT decode for payload without verifying signature.
@@ -88,12 +94,25 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
-        {checkingAuth ? // while checking token, render nothing (or could show splash)
-        null : !isAuthenticated ? (
+        {checkingAuth ? null : !isAuthenticated ? ( // while checking token, render nothing (or could show splash)
           <Login onLoginSuccess={() => setIsAuthenticated(true)} />
         ) : (
           <NavigationContainer>
-            <AppNavigator onLogout={() => setIsAuthenticated(false)} />
+            {/* Use a root native stack so we can push modal/details screens from anywhere */}
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+              <RootStack.Screen name="MainTabs">
+                {(props) => (
+                  <AppNavigator
+                    {...props}
+                    onLogout={() => setIsAuthenticated(false)}
+                  />
+                )}
+              </RootStack.Screen>
+              <RootStack.Screen name="Help" component={HelpScreen} />
+              <RootStack.Screen name="Terms" component={TermsScreen} />
+              <RootStack.Screen name="About" component={AboutScreen} />
+              <RootStack.Screen name="Privacy" component={PrivacyScreen} />
+            </RootStack.Navigator>
           </NavigationContainer>
         )}
       </SafeAreaView>
