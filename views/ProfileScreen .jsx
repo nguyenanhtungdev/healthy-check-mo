@@ -1,15 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Switch,
   TextInput,
   Image,
   Alert,
 } from "react-native";
+import RefreshableScrollView from "../components/RefreshableScrollView";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { ActivityIndicator } from "react-native";
@@ -35,16 +35,19 @@ const ProfileScreen = ({ onLogout, accountId }) => {
   const [localAccountId, setLocalAccountId] = useState(accountId || null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
     phone: "",
-    birthday: "",
+    birth: null,
     address: "",
     height: "",
     weight: "",
     bloodType: "",
+    gender: null,
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   const pickAndUploadImage = async () => {
     try {
@@ -73,14 +76,9 @@ const ProfileScreen = ({ onLogout, accountId }) => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
-
-      // Support both old and new result shapes
-      // Newer expo-image-picker returns { canceled, assets: [{ uri, ... }] }
-      // Older versions return { cancelled, uri }
       const wasCancelled =
         result.canceled === true || result.cancelled === true;
       if (wasCancelled) return;
-
       const localUri =
         (result.assets && result.assets[0] && result.assets[0].uri) ||
         result.uri;
@@ -94,56 +92,20 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         return;
       }
 
-      // determine which accountId to use: prop or stored local
       const idToUse = accountId || localAccountId;
       if (!idToUse) {
         Alert.alert("Lỗi", "Không tìm thấy accountId. Vui lòng đăng nhập lại.");
-        setUploading(false);
         return;
       }
 
-      const API_BASE = config.API_BASE;
-
-      // Determine existing (old) public_id from current avatar URL so server can delete it if desired
-      const existingUrl = avatarUrl || (account && account.imageUrl) || null;
+      const existingUrl = avatarUrl || (account && account.image) || null;
       const oldPublicId = existingUrl
         ? extractCloudinaryPublicIdFromUrl(existingUrl)
         : null;
 
-      // Optionally ask backend to delete the old image BEFORE uploading a new one
-      if (DELETE_OLD_BEFORE_UPLOAD && oldPublicId) {
-        try {
-          console.log(
-            "Requesting backend to delete old public_id before upload:",
-            oldPublicId
-          );
-          const delRes = await fetch(
-            `${API_BASE}/file-update/${idToUse}/delete-avatar`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ publicId: oldPublicId }),
-            }
-          );
-          if (!delRes.ok) {
-            const t = await delRes.text();
-            console.warn(
-              "Delete-old-avatar request returned",
-              delRes.status,
-              t
-            );
-          } else {
-            console.log("Backend acknowledged deletion of old image");
-          }
-        } catch (e) {
-          console.warn("Failed to call backend delete-avatar before upload", e);
-        }
-      }
-
       setUploading(true);
       let uploadedResp;
       try {
-        // uploadToCloudinaryAsync now returns the full JSON response from Cloudinary
         uploadedResp = await uploadToCloudinaryAsync(localUri);
       } catch (e) {
         Alert.alert("Lỗi tải ảnh", e.message || String(e));
@@ -155,17 +117,12 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         (uploadedResp && (uploadedResp.secure_url || uploadedResp.url)) || null;
       const newPublicId = uploadedResp && uploadedResp.public_id;
 
-      // Determine old public_id was handled earlier (we compute it before upload)
-
-      // Notify backend
       try {
         const API_BASE = config.API_BASE;
         const backendUrl = `${API_BASE}/file-update/${idToUse}/update-avatar`;
-        const payload = { imageUrl: uploadedUrl };
+        const payload = { image: uploadedUrl };
         if (oldPublicId) payload.oldPublicId = oldPublicId;
         if (newPublicId) payload.newPublicId = newPublicId;
-
-        console.log("Sending backend update payload:", payload);
 
         const r = await fetch(backendUrl, {
           method: "POST",
@@ -177,15 +134,13 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           throw new Error(`Server error: ${r.status} ${text}`);
         }
         const json = await r.json();
-        const finalUrl = json.imageUrl || uploadedUrl;
-        console.log("Backend response after avatar update:", json);
+        const finalUrl = json.image || uploadedUrl;
         setAvatarUrl(finalUrl);
-        // update stored account if exists
         try {
           const accStr = await AsyncStorage.getItem("account");
           if (accStr) {
             const acc = JSON.parse(accStr);
-            acc.imageUrl = finalUrl;
+            acc.image = finalUrl;
             await AsyncStorage.setItem("account", JSON.stringify(acc));
             setAccount(acc);
             setLocalAccountId(acc.accountId || idToUse);
@@ -206,7 +161,6 @@ const ProfileScreen = ({ onLogout, accountId }) => {
       setUploading(false);
     }
   };
-
   // Load stored account (if any) and set avatar/localAccountId
   React.useEffect(() => {
     (async () => {
@@ -215,7 +169,7 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         if (accStr) {
           const acc = JSON.parse(accStr);
           setAccount(acc);
-          setAvatarUrl(acc.imageUrl || null);
+          setAvatarUrl(acc.image || null);
           setLocalAccountId(acc.accountId || accountId || null);
         } else if (accountId) {
           setLocalAccountId(accountId);
@@ -224,113 +178,181 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         console.warn("Failed to read account from storage", e);
       }
     })();
-  }, []);
+  }, [accountId]);
 
-  // Fetch real profile from backend using token from storage
-  React.useEffect(() => {
-    (async () => {
-      try {
-        setLoadingProfile(true);
-        // try common AsyncStorage keys for token
-        const tokenKeys = [
-          "token",
-          "accessToken",
-          "authToken",
-          "authorization",
-        ];
-        let token = null;
-        for (const k of tokenKeys) {
-          const t = await AsyncStorage.getItem(k);
-          if (t) {
-            token = t;
-            break;
-          }
+  const reloadProfile = useCallback(async () => {
+    try {
+      setLoadingProfile(true);
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      let token = null;
+      for (const k of tokenKeys) {
+        const t = await AsyncStorage.getItem(k);
+        if (t) {
+          token = t;
+          break;
         }
-        // also check inside 'account' object
-        if (!token) {
-          const accStr = await AsyncStorage.getItem("account");
-          if (accStr) {
+      }
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {
+            console.warn(
+              "Stored 'account' is not valid JSON, clearing corrupt storage",
+              e
+            );
             try {
-              const acc = JSON.parse(accStr);
-              token = acc?.token || acc?.accessToken || token;
-            } catch (e) {
-              // ignore
+              await AsyncStorage.removeItem("account");
+            } catch (ee) {
+              console.warn("Failed to remove corrupt account from storage", ee);
             }
           }
         }
-
-        if (!token) {
-          console.warn(
-            "No auth token found in AsyncStorage; skipping profile fetch."
-          );
-          return;
-        }
-
-        // Use provided URL for get-account (user provided)
-        const API_BASE = config.API_BASE;
-        const backendUrl = `${API_BASE}/accounts/get-account`;
-        const res = await fetch(backendUrl, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          console.warn("Failed to fetch profile:", res.status, text);
-          return;
-        }
-        const json = await res.json();
-        // assume json contains { fullName, email, phone, birthday, address, height, weight, bloodType, imageUrl, accountId }
-        setAccount(json);
-        setAvatarUrl(json.imageUrl || json.avatarUrl || null);
-        setLocalAccountId(json.accountId || localAccountId);
-        setForm({
-          fullName: json.fullName || json.name || "",
-          email: json.email || "",
-          phone: json.phone || json.mobile || "",
-          birthday: json.birthday || "",
-          address: json.address || "",
-          height: json.height ? String(json.height) : "",
-          weight: json.weight ? String(json.weight) : "",
-          bloodType: json.bloodType || json.blood || "",
-        });
-        // persist into account storage if existing
-        try {
-          await AsyncStorage.setItem("account", JSON.stringify(json));
-        } catch (e) {
-          /* ignore */
-        }
-      } catch (e) {
-        console.warn("Error loading profile", e);
-      } finally {
-        setLoadingProfile(false);
       }
-    })();
-  }, []);
+      if (!token) {
+        console.warn(
+          "No auth token found in AsyncStorage; skipping profile fetch."
+        );
+        setLoadingProfile(false);
+        return;
+      }
+
+      const API_BASE = config.API_BASE;
+      const backendUrl = `${API_BASE}/accounts/get-account`;
+      let idToSend = localAccountId || accountId || null;
+      if (!idToSend) {
+        const accStr2 = await AsyncStorage.getItem("account");
+        if (accStr2) {
+          try {
+            const acc2 = JSON.parse(accStr2);
+            idToSend = acc2?.id || acc2?.accountId || idToSend;
+          } catch (e) {}
+        }
+      }
+      const body = idToSend ? JSON.stringify({ id: idToSend }) : undefined;
+
+      const res = await fetch(backendUrl, {
+        method: "POST",
+        headers: Object.assign(
+          { Authorization: `Bearer ${token}` },
+          body ? { "Content-Type": "application/json" } : {}
+        ),
+        body,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn("Failed to fetch profile:", res.status, text);
+        setLoadingProfile(false);
+        return;
+      }
+      let json;
+      try {
+        json = await res.json();
+      } catch (parseErr) {
+        const raw = await res.text().catch(() => null);
+        console.warn("Failed to parse profile JSON response", parseErr, raw);
+        try {
+          await AsyncStorage.removeItem("account");
+        } catch (ee) {
+          console.warn("Failed to clear corrupt account after parse error", ee);
+        }
+        setLoadingProfile(false);
+        return;
+      }
+
+      // if backend didn't return an image URL, fall back to previously stored account image
+      let storedAcc = null;
+      try {
+        const accStrBackup = await AsyncStorage.getItem("account");
+        if (accStrBackup) storedAcc = JSON.parse(accStrBackup);
+      } catch (e) {
+        /* ignore parse errors */
+      }
+
+      const finalimage =
+        json.image ||
+        json.avatarUrl ||
+        json.image ||
+        (storedAcc && (storedAcc.image || storedAcc.avatarUrl)) ||
+        null;
+      if (
+        !json.image &&
+        finalimage &&
+        storedAcc &&
+        (storedAcc.image || storedAcc.avatarUrl)
+      ) {
+        // if server didn't include image but we had one locally, preserve it in the object we'll store/use
+        json.image = finalimage;
+      }
+
+      setAccount(json);
+      setAvatarUrl(finalimage);
+      setLocalAccountId(json.accountId || localAccountId);
+      setForm({
+        fullName: json.fullName || json.name || "",
+        email: json.email || "",
+        phone: json.phone || json.mobile || "",
+        birth: json.birth || "",
+        address: json.address || "",
+        height: json.height ? String(json.height) : "",
+        weight: json.weight ? String(json.weight) : "",
+        bloodType: json.bloodType || json.blood || "",
+        gender: json.gender,
+      });
+      try {
+        await AsyncStorage.setItem("account", JSON.stringify(json));
+      } catch (e) {}
+      setLoadingProfile(false);
+    } catch (e) {
+      console.warn("Error loading profile", e);
+      setLoadingProfile(false);
+    }
+  }, [accountId, localAccountId]);
+
+  React.useEffect(() => {
+    reloadProfile();
+  }, [reloadProfile]);
 
   const updateProfile = async () => {
-    // save locally first
-    const updated = {
-      ...account,
-      fullName: form.fullName,
-      email: form.email,
-      phone: form.phone,
-      birthday: form.birthday,
-      address: form.address,
-      height: form.height,
-      weight: form.weight,
-      bloodType: form.bloodType,
-      imageUrl: avatarUrl,
+    setIsSaving(true);
+    // Build payload matching server contract
+    const payload = {
+      userId: localAccountId || account?.id || account?.accountId || null,
+      email: form.email || null,
+      phone: form.phone || null,
+      address: form.address || null,
+      birth: form.birth || null,
+      height: form.height ? parseFloat(String(form.height)) : null,
+      weight: form.weight ? parseFloat(String(form.weight)) : null,
+      bloodType: form.bloodType || null,
+      image:
+        avatarUrl || (account && (account.image || account.avatarUrl)) || null,
+      fullName: form.fullName || null,
+      gender: form.gender || null,
     };
-    setAccount(updated);
+
+    // Optimistically update local state/storage
+    const updatedLocal = Object.assign({}, account || {}, {
+      email: payload.email,
+      phone: payload.phone,
+      address: payload.address,
+      birth: payload.birth,
+      height: payload.height,
+      weight: payload.weight,
+      bloodType: payload.bloodType,
+      image: payload.image,
+    });
+    setAccount(updatedLocal);
     try {
-      await AsyncStorage.setItem("account", JSON.stringify(updated));
+      await AsyncStorage.setItem("account", JSON.stringify(updatedLocal));
     } catch (e) {
       console.warn("Failed to persist updated account locally", e);
     }
 
-    // attempt to send to backend (you may need to adjust endpoint)
     try {
-      // read token again
+      // Resolve token from common locations
       let token = await AsyncStorage.getItem("token");
       if (!token) {
         const accStr = await AsyncStorage.getItem("account");
@@ -338,7 +360,9 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           try {
             const acc = JSON.parse(accStr);
             token = acc?.token || acc?.accessToken || token;
-          } catch (e) {}
+          } catch (e) {
+            /* ignore */
+          }
         }
       }
       if (!token) {
@@ -350,19 +374,18 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         return;
       }
 
-      const API_ROOT = config.API_BASE || "http://localhost:8080";
-      const updateUrl = `${API_ROOT.replace(
-        /\/$/,
-        ""
-      )}/accounts/update-account`;
+      const API_ROOT = config.API_BASE;
+      const updateUrl = `${API_ROOT}/accounts/update-profile`;
+
       const res = await fetch(updateUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(updated),
+        body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const text = await res.text();
         Alert.alert(
@@ -370,8 +393,24 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           `Server returned ${res.status}: ${text}`
         );
       } else {
-        const j = await res.json();
-        Alert.alert(j.message || "Cập nhật thông tin thành công");
+        let j = null;
+        try {
+          j = await res.json();
+        } catch (e) {
+          // if server returned no json, just show success
+        }
+        Alert.alert((j && j.message) || "Cập nhật thông tin thành công");
+        // If server returned the updated account, persist it; otherwise persist our optimistic local copy
+        const toStore =
+          j && (j.account || j.data || j)
+            ? j.account || j.data || j
+            : updatedLocal;
+        try {
+          await AsyncStorage.setItem("account", JSON.stringify(toStore));
+          setAccount(toStore);
+        } catch (e) {
+          console.warn("Failed to persist server response for account", e);
+        }
       }
     } catch (e) {
       console.warn("Failed to send updated profile to backend", e);
@@ -380,12 +419,18 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         "Thông tin đã được cập nhật cục bộ nhưng gửi lên server thất bại."
       );
     } finally {
+      setIsSaving(false);
       setEditing(false);
     }
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <RefreshableScrollView
+      refreshing={loadingProfile}
+      onRefresh={reloadProfile}
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Profile Info Card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarContainer}>
@@ -405,11 +450,7 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           </LinearGradient>
           <TouchableOpacity
             style={styles.editAvatarButton}
-            onPress={async () => {
-              // handle press
-              // defined below as function pickAndUploadImage
-              await pickAndUploadImage();
-            }}
+            onPress={async () => await pickAndUploadImage()}
           >
             {uploading ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -419,31 +460,189 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           </TouchableOpacity>
         </View>
         {editing ? (
-          <View style={{ alignItems: "center" }}>
+          <View style={styles.editCard}>
+            <Text style={styles.editLabel}>Họ và tên</Text>
             <TextInput
               value={form.fullName}
               onChangeText={(t) => setForm((s) => ({ ...s, fullName: t }))}
-              style={[styles.input, { textAlign: "center", padding: 6 }]}
+              style={[styles.fieldInputStyled, { width: "100%" }]}
               placeholder="Họ và tên"
             />
+
+            <Text style={styles.editLabel}>Email</Text>
             <TextInput
               value={form.email}
               onChangeText={(t) => setForm((s) => ({ ...s, email: t }))}
-              style={[
-                styles.input,
-                { textAlign: "center", padding: 6, marginTop: 6 },
-              ]}
+              style={[styles.fieldInputStyled, { width: "100%" }]}
               placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
-            <View style={{ flexDirection: "row", marginTop: 10 }}>
+
+            <View style={styles.rowTwoColumn}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.editLabelSmall}>Số điện thoại</Text>
+                <TextInput
+                  value={form.phone}
+                  onChangeText={(t) => setForm((s) => ({ ...s, phone: t }))}
+                  style={styles.fieldInputStyled}
+                  placeholder="Số điện thoại"
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={styles.editLabelSmall}>Ngày sinh</Text>
+                <TextInput
+                  value={form.birth}
+                  onChangeText={(t) => setForm((s) => ({ ...s, birth: t }))}
+                  style={styles.fieldInputStyled}
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.editLabel}>Địa chỉ</Text>
+            <TextInput
+              value={form.address}
+              onChangeText={(t) => setForm((s) => ({ ...s, address: t }))}
+              style={[styles.fieldInputStyled, { width: "100%" }]}
+              placeholder="Địa chỉ"
+            />
+
+            <Text style={styles.editLabel}>Giới tính</Text>
+            <View style={styles.genderRow}>
+              <TouchableOpacity
+                style={styles.radioContainer}
+                onPress={() => setForm((s) => ({ ...s, gender: true }))}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: form.gender === true }}
+              >
+                <View
+                  style={[
+                    styles.radioOuter,
+                    form.gender === true && styles.radioOuterSelected,
+                  ]}
+                >
+                  {form.gender === true && <View style={styles.radioInner} />}
+                </View>
+                <Text
+                  style={[
+                    styles.genderText,
+                    form.gender === true && styles.genderTextSelected,
+                    styles.radioLabel,
+                  ]}
+                >
+                  Nam
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.radioContainer}
+                onPress={() => setForm((s) => ({ ...s, gender: false }))}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: form.gender === false }}
+              >
+                <View
+                  style={[
+                    styles.radioOuter,
+                    form.gender === false && styles.radioOuterSelected,
+                  ]}
+                >
+                  {form.gender === false && <View style={styles.radioInner} />}
+                </View>
+                <Text
+                  style={[
+                    styles.genderText,
+                    form.gender === false && styles.genderTextSelected,
+                    styles.radioLabel,
+                  ]}
+                >
+                  Nữ
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.radioContainer}
+                onPress={() => setForm((s) => ({ ...s, gender: null }))}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: form.gender === null }}
+              >
+                <View
+                  style={[
+                    styles.radioOuter,
+                    form.gender === null && styles.radioOuterSelected,
+                  ]}
+                >
+                  {form.gender === null && <View style={styles.radioInner} />}
+                </View>
+                <Text
+                  style={[
+                    styles.genderText,
+                    form.gender === null && styles.genderTextSelected,
+                    styles.radioLabel,
+                  ]}
+                >
+                  Khác
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ width: "100%", marginTop: 10 }}>
+              <View style={styles.rowTwoColumn}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.editLabelSmall}>Chiều cao (cm)</Text>
+                  <TextInput
+                    value={form.height}
+                    onChangeText={(t) => setForm((s) => ({ ...s, height: t }))}
+                    style={[styles.fieldInputStyled, { paddingVertical: 8 }]}
+                    placeholder="Ví dụ: 173"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.editLabelSmall}>Cân nặng (kg)</Text>
+                  <TextInput
+                    value={form.weight}
+                    onChangeText={(t) => setForm((s) => ({ ...s, weight: t }))}
+                    style={[styles.fieldInputStyled, { paddingVertical: 8 }]}
+                    placeholder="Ví dụ: 82"
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.editLabel, { marginTop: 10 }]}>
+                Nhóm máu
+              </Text>
+              <TextInput
+                value={form.bloodType}
+                onChangeText={(t) => setForm((s) => ({ ...s, bloodType: t }))}
+                style={[
+                  styles.fieldInputStyled,
+                  { marginTop: 6, width: "100%" },
+                ]}
+                placeholder="A, B, O, AB"
+                autoCapitalize="characters"
+              />
+            </View>
+
+            <View style={styles.actionRow}>
               <TouchableOpacity
                 onPress={() => setEditing(false)}
-                style={{ marginRight: 12 }}
+                style={[styles.ghostButton, { marginRight: 12 }]}
+                disabled={isSaving}
               >
-                <Text style={{ color: "#666" }}>Hủy</Text>
+                <Text style={styles.ghostButtonText}>Hủy bỏ</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={updateProfile}>
-                <Text style={{ color: "#667eea", fontWeight: "700" }}>Lưu</Text>
+              <TouchableOpacity
+                onPress={updateProfile}
+                disabled={isSaving}
+                style={styles.primaryButton}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Lưu thông tin</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -453,83 +652,87 @@ const ProfileScreen = ({ onLogout, accountId }) => {
             <Text style={styles.profileEmail}>{form.email || "-"}</Text>
             <TouchableOpacity
               onPress={() => setEditing(true)}
-              style={{ marginTop: 8 }}
+              style={styles.editButton}
             >
-              <Text style={{ color: "#667eea", fontWeight: "700" }}>
-                Chỉnh sửa
-              </Text>
+              <Text style={styles.editButtonText}>Chỉnh sửa</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* Personal Info Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+      {/* rest of sections (hide while editing to keep focus on the form) */}
+      {!editing && (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+            <EditableField
+              icon="person-outline"
+              title="Họ và tên"
+              value={form.fullName}
+              onChange={(v) => setForm((s) => ({ ...s, fullName: v }))}
+            />
+            <EditableField
+              icon="call-outline"
+              title="Số điện thoại"
+              value={form.phone}
+              onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
+            />
+            <EditableField
+              icon="calendar-outline"
+              title="Ngày sinh"
+              value={
+                form.birth &&
+                typeof form.birth === "string" &&
+                form.birth.includes("-")
+                  ? (() => {
+                      const [y, m, d] = form.birth.split("-");
+                      return `${d}/${m}/${y}`;
+                    })()
+                  : ""
+              }
+            />
+            <EditableField
+              icon="calendar-outline"
+              title="Giới tính"
+              value={
+                form.gender === null ? "" : form.gender === true ? "Nam" : "Nữ"
+              }
+              onChange={(v) => setForm((s) => ({ ...s, gender: v }))}
+            />
+            <EditableField
+              icon="location-outline"
+              title="Địa chỉ"
+              value={form.address}
+              onChange={(v) => setForm((s) => ({ ...s, address: v }))}
+            />
+          </View>
 
-        <EditableField
-          icon="person-outline"
-          title="Họ và tên"
-          value={form.fullName}
-          onChange={(v) => setForm((s) => ({ ...s, fullName: v }))}
-          editing={editing}
-        />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Thông tin sức khỏe</Text>
+            <MenuItem
+              icon="fitness-outline"
+              title="Chiều cao"
+              subtitle={`${form.height || "-"} cm`}
+              onPress={() => console.log("Edit height")}
+            />
+            <MenuItem
+              icon="body-outline"
+              title="Cân nặng"
+              subtitle={`${form.weight || "-"} kg`}
+              onPress={() => console.log("Edit weight")}
+            />
+            <MenuItem
+              icon="water-outline"
+              title="Nhóm máu"
+              subtitle={`${form.bloodType || "-"}`}
+              onPress={() => console.log("Edit blood type")}
+            />
+          </View>
+        </>
+      )}
 
-        <EditableField
-          icon="call-outline"
-          title="Số điện thoại"
-          value={form.phone}
-          onChange={(v) => setForm((s) => ({ ...s, phone: v }))}
-          editing={editing}
-        />
-
-        <EditableField
-          icon="calendar-outline"
-          title="Ngày sinh"
-          value={form.birthday}
-          onChange={(v) => setForm((s) => ({ ...s, birthday: v }))}
-          editing={editing}
-        />
-
-        <EditableField
-          icon="location-outline"
-          title="Địa chỉ"
-          value={form.address}
-          onChange={(v) => setForm((s) => ({ ...s, address: v }))}
-          editing={editing}
-        />
-      </View>
-
-      {/* Health Info Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thông tin sức khỏe</Text>
-
-        <MenuItem
-          icon="fitness-outline"
-          title="Chiều cao"
-          subtitle="170 cm"
-          onPress={() => console.log("Edit height")}
-        />
-
-        <MenuItem
-          icon="body-outline"
-          title="Cân nặng"
-          subtitle="65 kg"
-          onPress={() => console.log("Edit weight")}
-        />
-
-        <MenuItem
-          icon="water-outline"
-          title="Nhóm máu"
-          subtitle="O+"
-          onPress={() => console.log("Edit blood type")}
-        />
-      </View>
-
-      {/* Privacy Settings Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quyền riêng tư & Bảo mật</Text>
-
         <SettingItem
           icon="notifications-outline"
           title="Thông báo"
@@ -537,7 +740,6 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           value={notificationsEnabled}
           onValueChange={setNotificationsEnabled}
         />
-
         <SettingItem
           icon="shield-checkmark-outline"
           title="Xác thực sinh trắc học"
@@ -545,7 +747,6 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           value={biometricAuth}
           onValueChange={setBiometricAuth}
         />
-
         <SettingItem
           icon="share-social-outline"
           title="Chia sẻ dữ liệu"
@@ -553,14 +754,12 @@ const ProfileScreen = ({ onLogout, accountId }) => {
           value={dataSharing}
           onValueChange={setDataSharing}
         />
-
         <MenuItem
           icon="lock-closed-outline"
           title="Đổi mật khẩu"
           subtitle="Cập nhật mật khẩu của bạn"
           onPress={() => console.log("Change password")}
         />
-
         <MenuItem
           icon="finger-print-outline"
           title="Quyền truy cập ứng dụng"
@@ -569,22 +768,18 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         />
       </View>
 
-      {/* Account Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tài khoản</Text>
-
         <MenuItem
           icon="help-circle-outline"
           title="Trợ giúp & Hỗ trợ"
           onPress={() => console.log("Help")}
         />
-
         <MenuItem
           icon="document-text-outline"
           title="Điều khoản & Chính sách"
           onPress={() => console.log("Terms")}
         />
-
         <MenuItem
           icon="information-circle-outline"
           title="Giới thiệu"
@@ -593,7 +788,6 @@ const ProfileScreen = ({ onLogout, accountId }) => {
         />
       </View>
 
-      {/* Logout Button */}
       <TouchableOpacity
         style={styles.logoutButton}
         onPress={async () => {
@@ -610,7 +804,7 @@ const ProfileScreen = ({ onLogout, accountId }) => {
       </TouchableOpacity>
 
       <View style={styles.bottomSpacer} />
-    </ScrollView>
+    </RefreshableScrollView>
   );
 };
 
@@ -898,6 +1092,146 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#333",
     paddingVertical: 6,
+  },
+  fieldInputStyled: {
+    backgroundColor: "#fbfbff",
+    borderWidth: 1,
+    borderColor: "#e6e9f2",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    fontSize: 14,
+    color: "#111",
+  },
+  editCard: {
+    width: "100%",
+    padding: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    alignSelf: "stretch",
+  },
+  editLabel: {
+    fontSize: 13,
+    color: "#444",
+    marginTop: 12,
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+  editLabelSmall: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 6,
+    fontWeight: "700",
+  },
+  rowTwoColumn: { flexDirection: "row", width: "100%", marginTop: 6 },
+  genderRow: {
+    flexDirection: "row",
+    marginTop: 6,
+    justifyContent: "space-between",
+  },
+  genderOption: {
+    flex: 1,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e6e9f2",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  genderSelected: {
+    backgroundColor: "#667eea",
+    borderColor: "#667eea",
+  },
+  genderText: {
+    color: "#333",
+    fontWeight: "600",
+  },
+  genderTextSelected: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  radioContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    paddingVertical: 6,
+  },
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: "#cfd8ff",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+    backgroundColor: "#fff",
+  },
+  radioOuterSelected: {
+    borderColor: "#4f46e5",
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#4f46e5",
+  },
+  radioLabel: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "600",
+  },
+  actionRow: {
+    flexDirection: "row",
+    marginTop: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  primaryButton: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  primaryButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  ghostButton: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e6e9f2",
+  },
+  ghostButtonText: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  editButton: {
+    marginTop: 8,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#dfe6fb",
+  },
+  editButtonText: {
+    color: "#4f46e5",
+    fontWeight: "700",
   },
   logoutButton: {
     flexDirection: "row",
