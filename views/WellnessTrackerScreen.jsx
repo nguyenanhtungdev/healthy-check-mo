@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,9 +22,11 @@ try {
   DateTimePicker = null;
 }
 
+// reminders moved to a dedicated screen (RemindersScreen)
+
 const PRIMARY = "#667eea";
 
-const WellnessTrackerScreen = () => {
+const WellnessTrackerScreen = ({ navigation }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState(null);
@@ -141,6 +143,8 @@ const WellnessTrackerScreen = () => {
     }
     return dates;
   };
+
+  // Reminders are managed in a separate Reminders screen (registered on the root stack)
 
   const handleAddMeal = (mealType) => {
     if (!newMeal.name || !newMeal.calories) {
@@ -387,6 +391,35 @@ const WellnessTrackerScreen = () => {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Reminders Entry Point (navigates to full Reminders page) */}
+        <View style={styles.section}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text style={styles.sectionTitle}>Nhắc nhở</Text>
+            <TouchableOpacity
+              style={[
+                styles.submitBtn,
+                { paddingHorizontal: 12, paddingVertical: 8, width: "auto" },
+              ]}
+              onPress={() => navigation.navigate("Reminders")}
+            >
+              <Ionicons name="notifications-outline" size={18} color="#fff" />
+              <Text
+                style={[styles.submitBtnText, { width: "auto", marginLeft: 8 }]}
+              >
+                Mở nhắc nhở
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ color: "#666", marginTop: 8 }}>
+            Nhấn để quản lý nhắc nhở (tạo, sửa, xóa)
+          </Text>
+        </View>
         {/* Calendar */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Lịch theo dõi</Text>
@@ -667,6 +700,8 @@ const WellnessTrackerScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Reminders are handled on the separate Reminders screen */}
 
       {/* Modal Thêm Bữa Ăn */}
       <Modal
@@ -1201,6 +1236,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#666",
     fontWeight: "600",
+  },
+  reminderItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  reminderTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#000",
+  },
+  reminderDate: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
   },
 });
 

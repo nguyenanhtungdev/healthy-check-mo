@@ -26,6 +26,9 @@ const CLOUDINARY_UPLOAD_PRESET = "healthy-check-image"; // <-- set your unsigned
 const DELETE_OLD_BEFORE_UPLOAD = false;
 
 const ProfileScreen = ({ navigation, onLogout, accountId }) => {
+  // Default app logo (used as in-app default avatar when user hasn't set one)
+  const DEFAULT_APP_LOGO =
+    "https://res.cloudinary.com/dpujkjzzh/image/upload/v1760814010/logo-app_wopmor.png";
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [dataSharing, setDataSharing] = useState(false);
   const [biometricAuth, setBiometricAuth] = useState(true);
@@ -93,8 +96,8 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
         );
         return;
       }
-
       const idToUse = accountId || localAccountId;
+
       if (!idToUse) {
         Alert.alert("Lỗi", "Không tìm thấy accountId. Vui lòng đăng nhập lại.");
         return;
@@ -122,7 +125,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       try {
         const API_BASE = config.API_BASE;
         const backendUrl = `${API_BASE}/file-update/${idToUse}/update-avatar`;
-        const payload = { image: uploadedUrl };
+        const payload = { imageUrl: uploadedUrl };
         if (oldPublicId) payload.oldPublicId = oldPublicId;
         if (newPublicId) payload.newPublicId = newPublicId;
 
@@ -152,7 +155,6 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
         }
         Alert.alert(json.message || "Cập nhật avatar thành công");
       } catch (e) {
-        console.error("Backend update error", e);
         Alert.alert("Lỗi cập nhật avatar", e.message || String(e));
       } finally {
         setUploading(false);
@@ -233,7 +235,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
           } catch (e) {}
         }
       }
-      const body = idToSend ? JSON.stringify({ id: idToSend }) : undefined;
+      const body = JSON.stringify({ id: idToSend });
 
       const res = await fetch(backendUrl, {
         method: "POST",
@@ -276,9 +278,8 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       const finalimage =
         json.image ||
         json.avatarUrl ||
-        json.image ||
         (storedAcc && (storedAcc.image || storedAcc.avatarUrl)) ||
-        null;
+        DEFAULT_APP_LOGO;
       if (
         !json.image &&
         finalimage &&
@@ -447,7 +448,11 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
                 resizeMode="cover"
               />
             ) : (
-              <Ionicons name="person" size={48} color="#fff" />
+              <Image
+                source={{ uri: DEFAULT_APP_LOGO }}
+                style={[styles.avatarImage, { borderRadius: 12 }]}
+                resizeMode="contain"
+              />
             )}
           </LinearGradient>
           <TouchableOpacity
@@ -879,17 +884,21 @@ function extractCloudinaryPublicIdFromUrl(url) {
   try {
     if (!url) return null;
     const u = url.split("/");
-    // find the segment after 'upload' (may have 'v12345')
     const uploadIndex = u.findIndex((seg) => seg === "upload");
     if (uploadIndex === -1) return null;
-    const partsAfter = u.slice(uploadIndex + 1);
-    // remove version segment if present (starts with 'v' + digits)
-    if (partsAfter.length && /^v\d+/.test(partsAfter[0])) partsAfter.shift();
-    const last = partsAfter.join("/");
-    // strip extension
-    const publicIdWithExt = last.split("/").pop();
-    const publicId = publicIdWithExt.replace(/\.[^/.]+$/, "");
-    return publicId || null;
+
+    // Lấy phần sau "upload"
+    let partsAfter = u.slice(uploadIndex + 1);
+
+    // Bỏ phần version vXXXX nếu có
+    if (partsAfter.length && /^v\d+/.test(partsAfter[0])) {
+      partsAfter.shift();
+    }
+
+    // Ghép lại đầy đủ folder + public_id, bỏ đuôi .jpg/.png
+    let joined = partsAfter.join("/");
+    joined = joined.replace(/\.[^/.]+$/, ""); // bỏ phần mở rộng .jpg/.png
+    return joined; // healthy-check-image/avatar/hpm72zjkv74368ayj8hm
   } catch (e) {
     console.warn("Failed to extract public_id from Cloudinary url", e, url);
     return null;

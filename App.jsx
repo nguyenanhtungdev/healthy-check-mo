@@ -11,6 +11,7 @@ import HelpScreen from "./views/HelpScreen";
 import TermsScreen from "./views/TermsScreen";
 import AboutScreen from "./views/AboutScreen";
 import PrivacyScreen from "./views/PrivacyScreen";
+import RemindersScreen from "./views/RemindersScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Minimal JWT decode for payload without verifying signature.
@@ -112,6 +113,7 @@ export default function App() {
               <RootStack.Screen name="Terms" component={TermsScreen} />
               <RootStack.Screen name="About" component={AboutScreen} />
               <RootStack.Screen name="Privacy" component={PrivacyScreen} />
+              <RootStack.Screen name="Reminders" component={RemindersScreen} />
             </RootStack.Navigator>
           </NavigationContainer>
         )}

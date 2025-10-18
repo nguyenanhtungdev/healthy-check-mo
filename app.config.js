@@ -41,10 +41,23 @@ if (!apiBase) {
 if (!apiBase)
   apiBase = "https://unilaterally-waterlocked-chelsea.ngrok-free.dev";
 
-// export Expo config with extra.API_BASE
+// export Expo config with extra.API_BASE and ensure name stays consistent with app.json
 const expoConfig = Object.assign({}, appJson.expo || {});
+if (appJson && appJson.expo && appJson.expo.name) {
+  expoConfig.name = appJson.expo.name;
+}
+// Note: For native production builds, Expo requires local icon/splash assets.
+// We set remote URLs above for quick development and web preview, but
+// consider placing the provided logo into ./assets/ and updating app.json
+// to use local files before submitting to app stores.
+expoConfig.android = Object.assign({}, expoConfig.android || {}, {
+  package: "com.tungdev1109.healthycheck",
+});
 expoConfig.extra = Object.assign({}, expoConfig.extra || {}, {
   API_BASE: apiBase,
+  eas: {
+    projectId: "f3b6ee78-6a7e-4864-9e35-42e14e4d7971", // 👈 ID EAS bạn được cấp
+  },
 });
 
 module.exports = {
