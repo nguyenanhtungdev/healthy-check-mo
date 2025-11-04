@@ -333,7 +333,8 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       image:
         avatarUrl || (account && (account.image || account.avatarUrl)) || null,
       fullName: form.fullName || null,
-      gender: form.gender || null,
+      // preserve boolean false (female) instead of coercing to null
+      gender: typeof form.gender === "boolean" ? form.gender : null,
     };
 
     // Optimistically update local state/storage
@@ -346,6 +347,8 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       weight: payload.weight,
       bloodType: payload.bloodType,
       image: payload.image,
+      // ensure gender persisted locally (could be false)
+      gender: typeof form.gender === "boolean" ? form.gender : account?.gender,
     });
     setAccount(updatedLocal);
     try {

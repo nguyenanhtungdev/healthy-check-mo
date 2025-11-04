@@ -16,11 +16,13 @@ const PRIMARY = "#667eea";
 
 const AppNavigator = ({ onLogout }) => {
   const [accountId, setAccountId] = useState(null);
+  const [account, setAccount] = useState(null);
   useEffect(() => {
     AsyncStorage.getItem("account").then((accStr) => {
       if (accStr) {
         const acc = JSON.parse(accStr);
         setAccountId(acc.id || acc.accountId);
+        setAccount(acc);
       }
     });
   }, []);
@@ -61,11 +63,9 @@ const AppNavigator = ({ onLogout }) => {
         },
       })}
     >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreen}
-        options={{ tabBarLabel: "Trang chủ" }}
-      />
+      <Tab.Screen name="Home" options={{ tabBarLabel: "Trang chủ" }}>
+        {(props) => <HomeScreen {...props} account={account} />}
+      </Tab.Screen>
       <Tab.Screen
         name="Family"
         component={FamilyHealthScreen}
@@ -83,7 +83,12 @@ const AppNavigator = ({ onLogout }) => {
       />
       <Tab.Screen name="Profile" options={{ tabBarLabel: "Hồ sơ" }}>
         {(props) => (
-          <ProfileScreen {...props} onLogout={onLogout} accountId={accountId} />
+          <ProfileScreen
+            {...props}
+            onLogout={onLogout}
+            accountId={accountId}
+            setAccount={setAccount}
+          />
         )}
       </Tab.Screen>
     </Tab.Navigator>

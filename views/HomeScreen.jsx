@@ -1,16 +1,19 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  Button,
 } from "react-native";
+import RefreshableScrollView from "../components/RefreshableScrollView";
+import MenstrualWheel from "../components/MenstrualWheel";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-
-const PRIMARY = "#667eea";
-const SECONDARY = "#ede9fe";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const HomeScreen = ({ navigation }) => {
   const healthMetrics = [
@@ -60,12 +63,7 @@ const HomeScreen = ({ navigation }) => {
       color: "#667eea",
       screen: "Contact",
     },
-    {
-      id: 2,
-      title: "Thuốc của tôi",
-      icon: "medkit",
-      color: "#ec4899",
-    },
+    { id: 2, title: "Thuốc của tôi", icon: "medkit", color: "#ec4899" },
     {
       id: 3,
       title: "Lịch sử khám",
@@ -83,9 +81,103 @@ const HomeScreen = ({ navigation }) => {
   ];
 
   const handleActionPress = (action) => {
-    if (action.screen) {
-      navigation.navigate(action.screen);
+    if (action.screen) navigation.navigate(action.screen);
+  };
+
+  const [account, setAccount] = useState(null);
+  const [menstrual, setMenstrual] = useState({
+    lastPeriodStart: "",
+    cycleLength: "",
+    periodLength: "",
+  });
+  const [showMenstrualModal, setShowMenstrualModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadProfile = async () => {
+    setRefreshing(true);
+    try {
+      const accStr = await AsyncStorage.getItem("account");
+      if (accStr) {
+        const acc = JSON.parse(accStr);
+        setAccount(acc);
+        const last =
+          acc.lastPeriodStart || acc.menstrual?.lastPeriodStart || null;
+        const cycle = acc.cycleLength || acc.menstrual?.cycleLength || null;
+        const period = acc.periodLength || acc.menstrual?.periodLength || null;
+        if (last || cycle || period) {
+          setMenstrual({
+            lastPeriodStart: last || "",
+            cycleLength: cycle ? String(cycle) : "",
+            periodLength: period ? String(period) : "",
+          });
+          setRefreshing(false);
+          return;
+        }
+      }
+      const mStr = await AsyncStorage.getItem("menstrual");
+      if (mStr) {
+        const m = JSON.parse(mStr);
+        setMenstrual({
+          lastPeriodStart: m.lastPeriodStart || "",
+          cycleLength: m.cycleLength ? String(m.cycleLength) : "",
+          periodLength: m.periodLength ? String(m.periodLength) : "",
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to load account/menstrual", e);
+    } finally {
+      setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    reloadProfile();
+  }, []);
+
+  const saveMenstrual = async (m) => {
+    try {
+      await AsyncStorage.setItem("menstrual", JSON.stringify(m));
+      try {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          const acc = JSON.parse(accStr);
+          const merged = Object.assign({}, acc, {
+            lastPeriodStart: m.lastPeriodStart || acc.lastPeriodStart,
+            cycleLength: m.cycleLength
+              ? parseInt(String(m.cycleLength))
+              : acc.cycleLength,
+            periodLength: m.periodLength
+              ? parseInt(String(m.periodLength))
+              : acc.periodLength,
+          });
+          await AsyncStorage.setItem("account", JSON.stringify(merged));
+          setAccount(merged);
+        }
+      } catch (ee) {
+        console.warn("Failed to merge menstrual into account", ee);
+      }
+      setMenstrual({
+        lastPeriodStart: m.lastPeriodStart || "",
+        cycleLength: m.cycleLength ? String(m.cycleLength) : "",
+        periodLength: m.periodLength ? String(m.periodLength) : "",
+      });
+      setShowMenstrualModal(false);
+      Alert.alert("Lưu thành công", "Thông tin chu kỳ đã được lưu cục bộ.");
+    } catch (e) {
+      console.warn(e);
+      Alert.alert("Lỗi", "Không thể lưu dữ liệu chu kỳ. Vui lòng thử lại.");
+    }
+  };
+
+  const predictNextPeriod = (lastStartStr, cycleLenStr) => {
+    if (!lastStartStr || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(lastStartStr))
+      return null;
+    const cycle = parseInt(String(cycleLenStr));
+    if (!cycle || isNaN(cycle)) return null;
+    const parts = lastStartStr.split("-").map((p) => parseInt(p, 10));
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + cycle);
+    return d;
   };
 
   return (
@@ -108,7 +200,9 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </LinearGradient>
 
-      <ScrollView
+      <RefreshableScrollView
+        refreshing={refreshing}
+        onRefresh={reloadProfile}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -155,6 +249,67 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
+        {account && account.gender === false && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Quản lý chu kỳ kinh nguyệt</Text>
+            <View style={styles.metricCard}>
+              <View style={{ alignItems: "center", marginBottom: 12 }}>
+                <MenstrualWheel
+                  lastPeriodStart={menstrual.lastPeriodStart}
+                  cycleLength={menstrual.cycleLength || 28}
+                  periodLength={menstrual.periodLength || 5}
+                  size={160}
+                />
+              </View>
+              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
+                Kỳ gần nhất
+              </Text>
+              <Text style={{ color: "#444", marginBottom: 8 }}>
+                {menstrual.lastPeriodStart || "Chưa đặt"}
+              </Text>
+              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
+                Chu kỳ trung bình
+              </Text>
+              <Text style={{ color: "#444", marginBottom: 8 }}>
+                {menstrual.cycleLength
+                  ? `${menstrual.cycleLength} ngày`
+                  : "Chưa đặt"}
+              </Text>
+              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
+                Thời gian hành kinh
+              </Text>
+              <Text style={{ color: "#444", marginBottom: 12 }}>
+                {menstrual.periodLength
+                  ? `${menstrual.periodLength} ngày`
+                  : "Chưa đặt"}
+              </Text>
+              {(() => {
+                const next = predictNextPeriod(
+                  menstrual.lastPeriodStart,
+                  menstrual.cycleLength
+                );
+                if (next)
+                  return (
+                    <Text style={{ color: "#0f172a", marginBottom: 8 }}>
+                      Dự kiến kỳ tiếp theo: {next.toISOString().slice(0, 10)}
+                    </Text>
+                  );
+                return null;
+              })()}
+              <View
+                style={{ flexDirection: "row", justifyContent: "flex-end" }}
+              >
+                <TouchableOpacity
+                  onPress={() => setShowMenstrualModal(true)}
+                  style={[styles.primaryButton, { paddingHorizontal: 14 }]}
+                >
+                  <Text style={styles.primaryButtonText}>Sửa</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thao tác nhanh</Text>
           <View style={styles.actionsGrid}>
@@ -194,16 +349,89 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </ScrollView>
+
+        <Modal
+          visible={showMenstrualModal}
+          animationType="slide"
+          transparent={true}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            <View
+              style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16 }}
+            >
+              <Text
+                style={{ fontSize: 18, fontWeight: "700", marginBottom: 8 }}
+              >
+                Chỉnh sửa chu kỳ
+              </Text>
+              <Text style={{ color: "#444", marginBottom: 6 }}>
+                Ngày bắt đầu kỳ kinh gần nhất (YYYY-MM-DD)
+              </Text>
+              <TextInput
+                value={menstrual.lastPeriodStart}
+                onChangeText={(t) =>
+                  setMenstrual((s) => ({ ...s, lastPeriodStart: t }))
+                }
+                placeholder="YYYY-MM-DD"
+                style={[styles.fieldInputStyled, { marginBottom: 8 }]}
+              />
+              <Text style={{ color: "#444", marginBottom: 6 }}>
+                Độ dài chu kỳ (ngày)
+              </Text>
+              <TextInput
+                value={menstrual.cycleLength}
+                onChangeText={(t) =>
+                  setMenstrual((s) => ({ ...s, cycleLength: t }))
+                }
+                placeholder="28"
+                keyboardType="numeric"
+                style={[styles.fieldInputStyled, { marginBottom: 8 }]}
+              />
+              <Text style={{ color: "#444", marginBottom: 6 }}>
+                Thời gian hành kinh (ngày)
+              </Text>
+              <TextInput
+                value={menstrual.periodLength}
+                onChangeText={(t) =>
+                  setMenstrual((s) => ({ ...s, periodLength: t }))
+                }
+                placeholder="5"
+                keyboardType="numeric"
+                style={[styles.fieldInputStyled, { marginBottom: 12 }]}
+              />
+              <View
+                style={{ flexDirection: "row", justifyContent: "flex-end" }}
+              >
+                <TouchableOpacity
+                  style={[styles.ghostButton, { marginRight: 8 }]}
+                  onPress={() => setShowMenstrualModal(false)}
+                >
+                  <Text style={styles.ghostButtonText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => saveMenstrual(menstrual)}
+                >
+                  <Text style={styles.primaryButtonText}>Lưu</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </RefreshableScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fffe",
-  },
+  container: { flex: 1, backgroundColor: "#f8fffe" },
   gradientHeader: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -221,17 +449,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  greeting: {
-    fontSize: 15,
-    color: "#fff",
-    opacity: 0.9,
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#fff",
-    marginTop: 4,
-  },
+  greeting: { fontSize: 15, color: "#fff", opacity: 0.9 },
+  userName: { fontSize: 24, fontWeight: "800", color: "#fff", marginTop: 4 },
   notificationButton: {
     width: 48,
     height: 48,
@@ -253,27 +472,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  section: {
-    marginBottom: 28,
-  },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  section: { marginBottom: 28 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: "#111",
     marginBottom: 16,
   },
-  metricsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   metricCard: {
     width: "48%",
     backgroundColor: "#fff",
@@ -293,53 +501,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  metricTitle: {
-    fontSize: 13,
-    color: "#666",
-    marginBottom: 8,
-  },
+  metricTitle: { fontSize: 13, color: "#666", marginBottom: 8 },
   metricValueContainer: {
     flexDirection: "row",
     alignItems: "baseline",
     marginBottom: 8,
   },
-  metricValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#111",
-  },
-  metricUnit: {
-    fontSize: 14,
-    color: "#999",
-    marginLeft: 4,
-  },
+  metricValue: { fontSize: 24, fontWeight: "800", color: "#111" },
+  metricUnit: { fontSize: 14, color: "#999", marginLeft: 4 },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
     alignSelf: "flex-start",
   },
-  statusNormal: {
-    backgroundColor: "#10b98120",
-  },
-  statusWarning: {
-    backgroundColor: "#f59e0b20",
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  statusTextNormal: {
-    color: "#10b981",
-  },
-  statusTextWarning: {
-    color: "#f59e0b",
-  },
-  actionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
+  statusNormal: { backgroundColor: "#10b98120" },
+  statusWarning: { backgroundColor: "#f59e0b20" },
+  statusText: { fontSize: 11, fontWeight: "600" },
+  statusTextNormal: { color: "#10b981" },
+  statusTextWarning: { color: "#f59e0b" },
+  actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   actionCard: {
     width: "48%",
     backgroundColor: "#fff",
@@ -386,20 +567,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 16,
   },
-  tipContent: {
-    flex: 1,
-  },
-  tipTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111",
-    marginBottom: 6,
-  },
-  tipDescription: {
+  tipContent: { flex: 1 },
+  tipTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginBottom: 6 },
+  tipDescription: { fontSize: 14, color: "#666", lineHeight: 20 },
+  fieldInputStyled: {
+    backgroundColor: "#fbfbff",
+    borderWidth: 1,
+    borderColor: "#e6e9f2",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
     fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
+    color: "#111",
   },
+  primaryButton: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  primaryButtonText: { color: "#fff", fontWeight: "700" },
+
+  ghostButton: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e6e9f2",
+  },
+  ghostButtonText: { color: "#666", fontWeight: "600" },
 });
 
 export default HomeScreen;
