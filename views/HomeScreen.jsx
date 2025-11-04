@@ -365,13 +365,13 @@ const HomeScreen = ({ navigation }) => {
             }}
           >
             <View
-              style={{ 
-                backgroundColor: "#fff", 
-                borderRadius: 12, 
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 12,
                 padding: 20,
                 maxWidth: 400,
                 alignSelf: "center",
-                width: "100%"
+                width: "100%",
               }}
             >
               <Text

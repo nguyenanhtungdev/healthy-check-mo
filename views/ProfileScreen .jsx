@@ -28,7 +28,7 @@ const DELETE_OLD_BEFORE_UPLOAD = false;
 const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   // Default app logo (used as in-app default avatar when user hasn't set one)
   const DEFAULT_APP_LOGO =
-    "https://res.cloudinary.com/dpujkjzzh/image/upload/v1760814010/logo-app_wopmor.png";
+    "https://res.cloudinary.com/dpujkjzzh/image/upload/v1762276814/default-logo-profile_zqmx4o.jpg";
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [dataSharing, setDataSharing] = useState(false);
   const [biometricAuth, setBiometricAuth] = useState(true);
@@ -38,7 +38,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const [localAccountId, setLocalAccountId] = useState(accountId || null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
+  const [defaultLogoProfile, setDefaultLogoProfile] = useState(null);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -53,6 +53,28 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const [isSaving, setIsSaving] = useState(false);
   // navigation is provided by the navigator; use it to push help/terms/about/privacy
   // (ProfileScreen is used inside a Tab navigator which is nested in a root stack)
+
+  useEffect(() => {
+    const fetchAppLogo = async () => {
+      try {
+        const API_BASE = config.API_BASE;
+        const response = await fetch(
+          `${API_BASE}/app-settings/default_app_logo`
+        );
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const logoUrl = data?.default_app_logo?.value;
+        setDefaultLogoProfile(logoUrl);
+      } catch (error) {
+        console.error("Lỗi khi lấy app logo:", error);
+      }
+    };
+
+    fetchAppLogo();
+  }, []);
 
   const pickAndUploadImage = async () => {
     try {
@@ -279,7 +301,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
         json.image ||
         json.avatarUrl ||
         (storedAcc && (storedAcc.image || storedAcc.avatarUrl)) ||
-        DEFAULT_APP_LOGO;
+        defaultLogoProfile;
       if (
         !json.image &&
         finalimage &&
@@ -451,11 +473,9 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
                 resizeMode="cover"
               />
             ) : (
-              <Image
-                source={{ uri: DEFAULT_APP_LOGO }}
-                style={[styles.avatarImage, { borderRadius: 12 }]}
-                resizeMode="contain"
-              />
+              <View style={styles.defaultAvatarContainer}>
+                <Ionicons name="person" size={50} color="#667eea" />
+              </View>
             )}
           </LinearGradient>
           <TouchableOpacity
@@ -1031,6 +1051,16 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  defaultAvatarContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(102, 126, 234, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(102, 126, 234, 0.2)",
   },
   editAvatarButton: {
     position: "absolute",

@@ -144,33 +144,6 @@ const Login = ({ navigation, onLoginSuccess }) => {
     }
   };
 
-  const sendCode = async () => {
-    if (!email) {
-      setMessage("Please enter your email.");
-      return;
-    }
-    setLoading(true);
-    setMessage("");
-    try {
-      const res = await fetch(`${API_BASE}/auth/send-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setMessage(json.message || "Failed to send code.");
-      } else {
-        setMessage(json.message || "Code sent. Check your email.");
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage("Network error while sending code.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // verifyRegister removed from Login (use SignUp screen instead)
 
   // If the app wants to show SignUp/Reset as separate screens inside this component
