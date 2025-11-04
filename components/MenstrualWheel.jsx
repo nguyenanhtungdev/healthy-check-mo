@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-// import Svg, { Path, Circle, G } from "react-native-svg";
+import Svg, { Path, Circle, G } from "react-native-svg";
 
 // helpers to draw arcs
 function polarToCartesian(cx, cy, r, angleDeg) {

@@ -354,6 +354,7 @@ const HomeScreen = ({ navigation }) => {
           visible={showMenstrualModal}
           animationType="slide"
           transparent={true}
+          onRequestClose={() => setShowMenstrualModal(false)}
         >
           <View
             style={{
@@ -364,7 +365,14 @@ const HomeScreen = ({ navigation }) => {
             }}
           >
             <View
-              style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16 }}
+              style={{ 
+                backgroundColor: "#fff", 
+                borderRadius: 12, 
+                padding: 20,
+                maxWidth: 400,
+                alignSelf: "center",
+                width: "100%"
+              }}
             >
               <Text
                 style={{ fontSize: 18, fontWeight: "700", marginBottom: 8 }}
@@ -381,6 +389,11 @@ const HomeScreen = ({ navigation }) => {
                 }
                 placeholder="YYYY-MM-DD"
                 style={[styles.fieldInputStyled, { marginBottom: 8 }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectTextOnFocus={true}
+                returnKeyType="next"
+                blurOnSubmit={false}
               />
               <Text style={{ color: "#444", marginBottom: 6 }}>
                 Độ dài chu kỳ (ngày)
@@ -393,6 +406,12 @@ const HomeScreen = ({ navigation }) => {
                 placeholder="28"
                 keyboardType="numeric"
                 style={[styles.fieldInputStyled, { marginBottom: 8 }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectTextOnFocus={true}
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={2}
               />
               <Text style={{ color: "#444", marginBottom: 6 }}>
                 Thời gian hành kinh (ngày)
@@ -405,6 +424,11 @@ const HomeScreen = ({ navigation }) => {
                 placeholder="5"
                 keyboardType="numeric"
                 style={[styles.fieldInputStyled, { marginBottom: 12 }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectTextOnFocus={true}
+                returnKeyType="done"
+                maxLength={2}
               />
               <View
                 style={{ flexDirection: "row", justifyContent: "flex-end" }}
@@ -579,6 +603,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 14,
     color: "#111",
+    minHeight: 44, // Ensure minimum touch target
+    textAlign: "left",
+    outlineStyle: "none", // Remove web outline
   },
   primaryButton: {
     backgroundColor: "#667eea",
