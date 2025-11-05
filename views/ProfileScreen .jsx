@@ -516,7 +516,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
                   value={form.phone}
                   onChangeText={(t) => setForm((s) => ({ ...s, phone: t }))}
                   style={styles.fieldInputStyled}
-                  placeholder="Số điện thoại"
+                  placeholder="Số điện thoạii"
                   keyboardType="phone-pad"
                 />
               </View>
