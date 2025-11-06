@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -14,9 +15,10 @@ import MenstrualWheel from "../components/MenstrualWheel";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import config from '../config';
 
-const HomeScreen = ({ navigation }) => {
-  const healthMetrics = [
+const HomeScreen = ({ navigation, route }) => {
+  const [healthMetrics, setHealthMetrics] = useState([
     {
       id: 1,
       title: "Nhịp tim",
@@ -53,30 +55,30 @@ const HomeScreen = ({ navigation }) => {
       color: "#06b6d4",
       status: "low",
     },
-  ];
+  ]);
 
   const quickActions = [
     {
       id: 1,
+      title: "Ghi nhận sức khỏe",
+      icon: "heart-outline",
+      color: "#ef4444",
+      screen: "HealthRecord",
+    },
+    {
+      id: 2,
       title: "Đặt lịch khám",
       icon: "calendar",
       color: "#667eea",
       screen: "Contact",
     },
-    { id: 2, title: "Thuốc của tôi", icon: "medkit", color: "#ec4899" },
+    { id: 3, title: "Thuốc của tôi", icon: "medkit", color: "#ec4899" },
     {
-      id: 3,
+      id: 4,
       title: "Lịch sử khám",
       icon: "document-text",
       color: "#f59e0b",
       screen: "Profile",
-    },
-    {
-      id: 4,
-      title: "Tư vấn",
-      icon: "chatbubble-ellipses",
-      color: "#8b5cf6",
-      screen: "Contact",
     },
   ];
 
@@ -85,6 +87,7 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const [account, setAccount] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [menstrual, setMenstrual] = useState({
     lastPeriodStart: "",
     cycleLength: "",
@@ -93,6 +96,81 @@ const HomeScreen = ({ navigation }) => {
   const [showMenstrualModal, setShowMenstrualModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Hàm cập nhật health metrics từ dữ liệu mới
+  const updateHealthMetrics = (newData) => {
+    setHealthMetrics(prevMetrics => {
+      const updatedMetrics = [...prevMetrics];
+      
+      // Cập nhật nhịp tim
+      if (newData.heartRate) {
+        const heartRateIndex = updatedMetrics.findIndex(m => m.id === 1);
+        if (heartRateIndex !== -1) {
+          updatedMetrics[heartRateIndex] = {
+            ...updatedMetrics[heartRateIndex],
+            value: newData.heartRate,
+            status: getHeartRateStatus(parseInt(newData.heartRate))
+          };
+        }
+      }
+      
+      // Cập nhật huyết áp
+      if (newData.bloodPressureSystolic && newData.bloodPressureDiastolic) {
+        const bpIndex = updatedMetrics.findIndex(m => m.id === 2);
+        if (bpIndex !== -1) {
+          updatedMetrics[bpIndex] = {
+            ...updatedMetrics[bpIndex],
+            value: `${newData.bloodPressureSystolic}/${newData.bloodPressureDiastolic}`,
+            status: getBloodPressureStatus(parseInt(newData.bloodPressureSystolic), parseInt(newData.bloodPressureDiastolic))
+          };
+        }
+      }
+      
+      // Cập nhật cân nặng
+      if (newData.weight) {
+        const weightIndex = updatedMetrics.findIndex(m => m.id === 3);
+        if (weightIndex !== -1) {
+          updatedMetrics[weightIndex] = {
+            ...updatedMetrics[weightIndex],
+            value: parseFloat(newData.weight).toFixed(1),
+            status: "normal" // Có thể thêm logic đánh giá BMI
+          };
+        }
+      }
+      
+      // Cập nhật lượng nước
+      if (newData.waterIntake) {
+        const waterIndex = updatedMetrics.findIndex(m => m.id === 4);
+        if (waterIndex !== -1) {
+          updatedMetrics[waterIndex] = {
+            ...updatedMetrics[waterIndex],
+            value: parseFloat(newData.waterIntake).toFixed(1),
+            status: getWaterIntakeStatus(parseFloat(newData.waterIntake))
+          };
+        }
+      }
+      
+      return updatedMetrics;
+    });
+  };
+
+  // Hàm đánh giá trạng thái nhịp tim
+  const getHeartRateStatus = (heartRate) => {
+    if (heartRate >= 60 && heartRate <= 100) return "normal";
+    return "warning";
+  };
+
+  // Hàm đánh giá trạng thái huyết áp
+  const getBloodPressureStatus = (systolic, diastolic) => {
+    if (systolic <= 120 && diastolic <= 80) return "normal";
+    return "warning";
+  };
+
+  // Hàm đánh giá trạng thái lượng nước
+  const getWaterIntakeStatus = (waterIntake) => {
+    if (waterIntake >= 2.0) return "normal";
+    return "low";
+  };
+
   const reloadProfile = async () => {
     setRefreshing(true);
     try {
@@ -100,6 +178,11 @@ const HomeScreen = ({ navigation }) => {
       if (accStr) {
         const acc = JSON.parse(accStr);
         setAccount(acc);
+        setUserId(acc.id || acc.accountId);
+        
+        // Tải dữ liệu sức khỏe từ server
+        await loadTodayHealthData(acc.id || acc.accountId);
+        
         const last =
           acc.lastPeriodStart || acc.menstrual?.lastPeriodStart || null;
         const cycle = acc.cycleLength || acc.menstrual?.cycleLength || null;
@@ -130,9 +213,46 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Hàm tải dữ liệu sức khỏe hôm nay từ server
+  const loadTodayHealthData = async (currentUserId) => {
+    if (!currentUserId) return;
+    
+    try {
+      const response = await fetch(`${config.API_BASE}/api/health-records/today/${currentUserId}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        updateHealthMetrics(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading today health data:', error);
+    }
+  };
+
   useEffect(() => {
     reloadProfile();
   }, []);
+
+  // Lắng nghe params từ navigation để cập nhật health data
+  useEffect(() => {
+    if (route.params?.refreshHealthData && route.params?.newHealthData) {
+      updateHealthMetrics(route.params.newHealthData);
+      // Reset params để tránh cập nhật lại khi re-render
+      navigation.setParams({ 
+        refreshHealthData: false, 
+        newHealthData: null 
+      });
+    }
+  }, [route.params]);
+
+  // Tải lại dữ liệu khi màn hình được focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userId) {
+        loadTodayHealthData(userId);
+      }
+    }, [userId])
+  );
 
   const saveMenstrual = async (m) => {
     try {
@@ -341,10 +461,35 @@ const HomeScreen = ({ navigation }) => {
               <Ionicons name="bulb" size={32} color="#f59e0b" />
             </View>
             <View style={styles.tipContent}>
-              <Text style={styles.tipTitle}>Uống đủ nước</Text>
+              <Text style={styles.tipTitle}>
+                {(() => {
+                  const waterMetric = healthMetrics.find(m => m.id === 4);
+                  const currentWater = parseFloat(waterMetric?.value || 0);
+                  if (currentWater < 2.0) {
+                    const needed = (2.0 - currentWater).toFixed(1);
+                    return "Uống đủ nước";
+                  } else if (healthMetrics.find(m => m.id === 1)?.status === "warning") {
+                    return "Theo dõi nhịp tim";
+                  } else if (healthMetrics.find(m => m.id === 2)?.status === "warning") {
+                    return "Theo dõi huyết áp";
+                  }
+                  return "Duy trì sức khỏe tốt";
+                })()}
+              </Text>
               <Text style={styles.tipDescription}>
-                Bạn nên uống thêm 200ml nước để đạt mục tiêu 2L/ngày. Giữ cơ thể
-                luôn được cung cấp đủ nước!
+                {(() => {
+                  const waterMetric = healthMetrics.find(m => m.id === 4);
+                  const currentWater = parseFloat(waterMetric?.value || 0);
+                  if (currentWater < 2.0) {
+                    const needed = (2.0 - currentWater).toFixed(1);
+                    return `Bạn nên uống thêm ${needed}L nước để đạt mục tiêu 2L/ngày. Giữ cơ thể luôn được cung cấp đủ nước!`;
+                  } else if (healthMetrics.find(m => m.id === 1)?.status === "warning") {
+                    return "Nhịp tim của bạn nằm ngoài khoảng bình thường. Hãy nghỉ ngơi và theo dõi thêm.";
+                  } else if (healthMetrics.find(m => m.id === 2)?.status === "warning") {
+                    return "Huyết áp của bạn cần được theo dõi. Hãy thư giãn và tránh căng thẳng.";
+                  }
+                  return "Các chỉ số sức khỏe của bạn đều tốt! Hãy tiếp tục duy trì lối sống khỏe mạnh.";
+                })()}
               </Text>
             </View>
           </View>
