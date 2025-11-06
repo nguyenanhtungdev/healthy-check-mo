@@ -2,11 +2,12 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Text, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import config from "../config";
 
 import HomeScreen from "./HomeScreen";
-import ContactScreen from "./ContactScreen";
+import ContactScreen from "./NotificationScreen";
 import ProfileScreen from "./ProfileScreen ";
 import FamilyHealthScreen from "./FamilyHealthScreen";
 import WellnessTrackerScreen from "./WellnessTrackerScreen";
@@ -17,6 +18,62 @@ const PRIMARY = "#667eea";
 const AppNavigator = ({ onLogout }) => {
   const [accountId, setAccountId] = useState(null);
   const [account, setAccount] = useState(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  // Get token for API calls
+  const getToken = async () => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      for (const key of tokenKeys) {
+        const token = await AsyncStorage.getItem(key);
+        if (token) return token;
+      }
+
+      const accStr = await AsyncStorage.getItem("account");
+      if (accStr) {
+        const acc = JSON.parse(accStr);
+        return acc?.token || acc?.accessToken;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error getting token:", error);
+      return null;
+    }
+  };
+
+  // Load unread notification count
+  const loadUnreadCount = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const response = await fetch(
+        `${config.API_BASE}/notifications/count-unread?_t=${Date.now()}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const count = data.count || 0;
+        setUnreadNotificationCount(count);
+      } else {
+        console.warn(
+          "AppNavigator: Failed to load unread count:",
+          response.status
+        );
+      }
+    } catch (error) {
+      console.error("AppNavigator: Error loading unread count:", error);
+    }
+  };
+
   useEffect(() => {
     AsyncStorage.getItem("account").then((accStr) => {
       if (accStr) {
@@ -25,6 +82,30 @@ const AppNavigator = ({ onLogout }) => {
         setAccount(acc);
       }
     });
+
+    // Load unread count on mount
+    loadUnreadCount();
+
+    // Refresh unread count every 15 seconds (reduced from 30)
+    const interval = setInterval(loadUnreadCount, 15000);
+
+    // Listen for app state changes (foreground/background)
+    const handleAppStateChange = (nextAppState) => {
+      if (nextAppState === "active") {
+        console.log("App became active, refreshing notifications...");
+        loadUnreadCount();
+      }
+    };
+
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
+
+    return () => {
+      clearInterval(interval);
+      subscription?.remove();
+    };
   }, []);
   return (
     <Tab.Navigator
@@ -41,8 +122,8 @@ const AppNavigator = ({ onLogout }) => {
             iconName = focused ? "home" : "home-outline";
           } else if (route.name === "Family") {
             iconName = focused ? "people" : "people-outline";
-          } else if (route.name === "Contact") {
-            iconName = focused ? "chatbubbles" : "chatbubbles-outline";
+          } else if (route.name === "Notification") {
+            iconName = focused ? "notifications" : "notifications-outline";
           } else if (route.name === "WellnessTracker") {
             iconName = focused ? "leaf" : "leaf-outline";
           } else if (route.name === "Profile") {
@@ -58,6 +139,16 @@ const AppNavigator = ({ onLogout }) => {
                 size={24}
                 color={focused ? "#fff" : "#666"}
               />
+              {/* Notification Badge */}
+              {route.name === "Notification" && unreadNotificationCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadNotificationCount > 99
+                      ? "99+"
+                      : unreadNotificationCount}
+                  </Text>
+                </View>
+              )}
             </View>
           );
         },
@@ -76,11 +167,14 @@ const AppNavigator = ({ onLogout }) => {
         component={WellnessTrackerScreen}
         options={{ tabBarLabel: "Sức khỏe" }}
       />
-      <Tab.Screen
-        name="Contact"
-        component={ContactScreen}
-        options={{ tabBarLabel: "Liên hệ" }}
-      />
+      <Tab.Screen name="Notification" options={{ tabBarLabel: "Thông báo" }}>
+        {(props) => (
+          <ContactScreen
+            {...props}
+            onUnreadCountChange={setUnreadNotificationCount}
+          />
+        )}
+      </Tab.Screen>
       <Tab.Screen name="Profile" options={{ tabBarLabel: "Hồ sơ" }}>
         {(props) => (
           <ProfileScreen
@@ -122,6 +216,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f3f4f6",
+    position: "relative",
   },
   iconWrapperActive: {
     backgroundColor: PRIMARY,
@@ -130,6 +225,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  badge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
   },
 });
 

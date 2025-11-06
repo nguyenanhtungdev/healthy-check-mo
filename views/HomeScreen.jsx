@@ -15,6 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const PRIMARY = "#6366f1";
+const SECONDARY = "#8b5cf6";
 const HomeScreen = ({ navigation }) => {
   const healthMetrics = [
     {
@@ -183,7 +185,7 @@ const HomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#667eea", "#764ba2"]}
+        colors={[PRIMARY, SECONDARY]}
         style={styles.gradientHeader}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -510,8 +512,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fffe" },
   gradientHeader: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 14,
+    paddingBottom: 22,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     shadowColor: "#667eea",

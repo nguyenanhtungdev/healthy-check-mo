@@ -12,6 +12,7 @@ import {
   Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Platform } from "react-native";
 // Note: we'll use the community DateTimePicker if available in the app environment
 let DateTimePicker = null;
@@ -24,7 +25,8 @@ try {
 
 // reminders moved to a dedicated screen (RemindersScreen)
 
-const PRIMARY = "#667eea";
+const PRIMARY = "#6366f1";
+const SECONDARY = "#8b5cf6";
 
 const WellnessTrackerScreen = ({ navigation }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -374,7 +376,12 @@ const WellnessTrackerScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <LinearGradient
+        colors={[PRIMARY, SECONDARY]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
         <View>
           <Text style={styles.headerTitle}>Lối sống lành mạnh</Text>
           <Text style={styles.headerSubtitle}>Theo dõi bữa ăn & vận động</Text>
@@ -388,7 +395,7 @@ const WellnessTrackerScreen = ({ navigation }) => {
             <Text style={styles.rangeButtonText}>Lọc ngày</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Reminders Entry Point (navigates to full Reminders page) */}
@@ -774,20 +781,22 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    paddingTop: 18,
+    paddingBottom: 18,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#000",
+    color: "#fff",
   },
   headerSubtitle: {
     fontSize: 12,
-    color: "#666",
+    color: "#fff",
     marginTop: 4,
   },
   headerActions: {

@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 let DateTimePicker = null;
@@ -28,8 +29,8 @@ try {
   Notifications = null;
 }
 
-const PRIMARY = "#667eea";
-const SECONDARY = "#764ba2";
+const PRIMARY = "#6366f1";
+const SECONDARY = "#8b5cf6";
 const ACCENT = "#f093fb";
 const ICON_SIZE = 18;
 
@@ -116,7 +117,7 @@ export default function RemindersScreen({ navigation }) {
         setEditing(null);
         setModalVisible(false);
         resetForm();
-        Alert.alert("✅ Lưu thành công");
+        Alert.alert("Lưu thành công");
         return;
       }
 
@@ -146,7 +147,7 @@ export default function RemindersScreen({ navigation }) {
       await persist(next);
       setModalVisible(false);
       resetForm();
-      Alert.alert("✅ Tạo nhắc nhở thành công");
+      Alert.alert("Tạo nhắc nhở thành công");
     } catch (e) {
       console.warn("Failed to create reminder", e);
       Alert.alert("Lỗi", "Không thể tạo nhắc nhở. Vui lòng thử lại.");
@@ -283,8 +284,12 @@ export default function RemindersScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header với gradient */}
-      <View style={styles.header}>
+      <LinearGradient
+        colors={[PRIMARY, SECONDARY]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -292,7 +297,7 @@ export default function RemindersScreen({ navigation }) {
         <TouchableOpacity onPress={() => setSearchQuery("")}>
           <Ionicons name="search" size={24} color="#fff" />
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         {/* Thanh tìm kiếm */}
@@ -670,17 +675,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fd",
   },
   header: {
-    backgroundColor: PRIMARY,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   headerTitle: {
     color: "#fff",

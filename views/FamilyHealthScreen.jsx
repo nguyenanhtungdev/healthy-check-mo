@@ -11,7 +11,9 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import RefreshableScrollView from "../components/RefreshableScrollView";
@@ -51,6 +53,22 @@ const FamilyHealthScreen = () => {
     relation: "",
   });
 
+  // States for health check scheduling
+  const [appointmentModalVisible, setAppointmentModalVisible] = useState(false);
+  const [appointmentData, setAppointmentData] = useState({
+    frequency: "Hàng tháng", // Hàng tháng, Hàng quý, Hàng năm
+    hospital: "",
+    selectedMembers: [],
+    firstDate: new Date(),
+    note: "",
+  });
+  const [existingAppointments, setExistingAppointments] = useState([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState(null);
+  const [savingAppointment, setSavingAppointment] = useState(false);
+  const [showAllAppointments, setShowAllAppointments] = useState(false); // State để quản lý hiển thị tất cả lịch hẹn
+  const [showAllMembers, setShowAllMembers] = useState(false); // State để quản lý hiển thị tất cả thành viên
+
   const relations = [
     "Vợ",
     "Chồng",
@@ -64,6 +82,95 @@ const FamilyHealthScreen = () => {
     "Em gái",
     "Khác",
   ];
+
+  // Function để sắp xếp và giới hạn hiển thị lịch hẹn
+  const getDisplayedAppointments = () => {
+    if (!existingAppointments || existingAppointments.length === 0) {
+      return [];
+    }
+
+    // Sắp xếp theo firstDate (gần nhất trước, chưa đặt ngày cuối)
+    const sortedAppointments = [...existingAppointments].sort((a, b) => {
+      const dateA = new Date(a.firstDate || "2099-12-31");
+      const dateB = new Date(b.firstDate || "2099-12-31");
+      const now = new Date();
+
+      // Ưu tiên lịch hẹn sắp tới (trong tương lai gần)
+      const diffA = Math.abs(dateA - now);
+      const diffB = Math.abs(dateB - now);
+
+      // Nếu cả hai đều trong tương lai hoặc quá khứ, sắp xếp theo thời gian
+      if ((dateA >= now && dateB >= now) || (dateA < now && dateB < now)) {
+        return dateA - dateB;
+      }
+
+      // Ưu tiên lịch hẹn trong tương lai
+      if (dateA >= now && dateB < now) return -1;
+      if (dateA < now && dateB >= now) return 1;
+
+      return diffA - diffB;
+    });
+
+    // Giới hạn hiển thị tối đa 3 item nếu showAllAppointments = false
+    return showAllAppointments
+      ? sortedAppointments
+      : sortedAppointments.slice(0, 3);
+  };
+
+  // Function để toggle hiển thị tất cả lịch hẹn
+  const toggleShowAllAppointments = () => {
+    setShowAllAppointments(!showAllAppointments);
+  };
+
+  // Function để xác định trạng thái lịch hẹn
+  const getAppointmentStatus = (firstDate) => {
+    if (!firstDate)
+      return { status: "pending", color: TEXT_MUTED, text: "Chưa đặt" };
+
+    const appointmentDate = new Date(firstDate);
+    const today = new Date();
+    const diffTime = appointmentDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return { status: "today", color: WARNING, text: "Hôm nay" };
+    } else if (diffDays > 0 && diffDays <= 7) {
+      return {
+        status: "upcoming",
+        color: SUCCESS,
+        text: `Còn ${diffDays} ngày`,
+      };
+    } else if (diffDays > 7) {
+      return { status: "future", color: PRIMARY, text: formatDate(firstDate) };
+    } else {
+      return { status: "past", color: TEXT_MUTED, text: "Đã qua" };
+    }
+  };
+
+  // Function để sắp xếp và giới hạn hiển thị thành viên
+  const getDisplayedMembers = () => {
+    if (!filteredMembers || filteredMembers.length === 0) {
+      return [];
+    }
+
+    // Sắp xếp thành viên: chủ hộ đầu tiên, sau đó theo thứ tự alphabet
+    const sortedMembers = [...filteredMembers].sort((a, b) => {
+      // Chủ hộ luôn ở đầu
+      if (a.isOwner && !b.isOwner) return -1;
+      if (!a.isOwner && b.isOwner) return 1;
+
+      // Sắp xếp theo tên
+      return (a.fullName || "").localeCompare(b.fullName || "");
+    });
+
+    // Giới hạn hiển thị tối đa 3 item nếu showAllMembers = false
+    return showAllMembers ? sortedMembers : sortedMembers.slice(0, 3);
+  };
+
+  // Function để toggle hiển thị tất cả thành viên
+  const toggleShowAllMembers = () => {
+    setShowAllMembers(!showAllMembers);
+  };
 
   // Check if current user is household owner
   const checkOwnerPermission = async () => {
@@ -133,13 +240,30 @@ const FamilyHealthScreen = () => {
         const logoUrl = data?.default_app_logo?.value;
         setDefaultLogoProfile(logoUrl);
       } catch (error) {
-        console.error("Lỗi khi lấy app logo:", error);
         // Fallback to hardcoded default if API fails
         setDefaultLogoProfile(DEFAULT_APP_LOGO);
       }
     };
 
     fetchAppLogo();
+  }, []);
+
+  // Load appointments on component mount
+  useEffect(() => {
+    // Test network connectivity first
+    const testNetwork = async () => {
+      try {
+        const testResponse = await fetch(config.API_BASE + "/", {
+          method: "GET",
+          timeout: 5000,
+        });
+      } catch (error) {
+        console.error("Network test failed:", error);
+      }
+    };
+
+    testNetwork();
+    loadAppointments();
   }, []);
 
   // Load family members from API
@@ -203,7 +327,6 @@ const FamilyHealthScreen = () => {
         name: item.member.fullName || "Chưa có tên",
         relation: item.relation,
         age: calculateAge(item.member.birth),
-        avatar: item.member.gender ? "👨" : "👩",
         avatarUrl:
           item.member.urlImage || defaultLogoProfile || DEFAULT_APP_LOGO,
         lastCheck: "Chưa có dữ liệu",
@@ -268,6 +391,8 @@ const FamilyHealthScreen = () => {
   // Update filtered members when family members or filters change
   useEffect(() => {
     filterMembers();
+    // Reset show all members when filter changes
+    setShowAllMembers(false);
   }, [filterMembers]);
 
   // Clear all filters
@@ -470,6 +595,336 @@ const FamilyHealthScreen = () => {
     ]);
   };
 
+  // Load appointments from API
+  const loadAppointments = async () => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      let token = null;
+      for (const k of tokenKeys) {
+        const t = await AsyncStorage.getItem(k);
+        if (t) {
+          token = t;
+          break;
+        }
+      }
+
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {
+            console.warn("Failed to parse account for token", e);
+          }
+        }
+      }
+
+      if (!token) {
+        console.warn("No token found for appointments");
+        return;
+      }
+      const apiUrl = `${config.API_BASE}/appointments/list`;
+      const response = await fetch(apiUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const appointments = await response.json();
+      setExistingAppointments(appointments || []);
+    } catch (error) {
+      console.error("Error loading appointments:", error);
+      // Don't show alert for network errors during initial load
+      // Alert.alert("Lỗi", "Không thể tải danh sách lịch khám");
+    }
+  };
+
+  // Create new appointment
+  const createAppointment = async (appointmentData) => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      let token = null;
+      for (const k of tokenKeys) {
+        const t = await AsyncStorage.getItem(k);
+        if (t) {
+          token = t;
+          break;
+        }
+      }
+
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {
+            console.warn("Failed to parse account for token", e);
+          }
+        }
+      }
+
+      if (!token) {
+        throw new Error("No token found");
+      }
+
+      const formattedDate = appointmentData.firstDate
+        .toISOString()
+        .split("T")[0];
+
+      const requestBody = {
+        hospital: appointmentData.hospital,
+        frequency: appointmentData.frequency,
+        note: appointmentData.note || "",
+        firstDate: formattedDate,
+        memberIds: appointmentData.selectedMembers,
+      };
+
+      const response = await fetch(`${config.API_BASE}/appointments/create`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to create appointment");
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Update appointment
+  const updateAppointment = async (appointmentId, appointmentData) => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      let token = null;
+      for (const k of tokenKeys) {
+        const t = await AsyncStorage.getItem(k);
+        if (t) {
+          token = t;
+          break;
+        }
+      }
+
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {
+            console.warn("Failed to parse account for token", e);
+          }
+        }
+      }
+
+      if (!token) {
+        throw new Error("No token found");
+      }
+
+      const formattedDate = appointmentData.firstDate
+        .toISOString()
+        .split("T")[0];
+
+      const requestBody = {
+        hospital: appointmentData.hospital,
+        frequency: appointmentData.frequency,
+        firstDate: formattedDate,
+        note: appointmentData.note || "",
+        memberIds: appointmentData.selectedMembers,
+      };
+
+      const response = await fetch(
+        `${config.API_BASE}/appointments/${appointmentId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to update appointment");
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Delete appointment
+  const deleteAppointment = async (appointmentId) => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      let token = null;
+      for (const k of tokenKeys) {
+        const t = await AsyncStorage.getItem(k);
+        if (t) {
+          token = t;
+          break;
+        }
+      }
+
+      if (!token) {
+        const accStr = await AsyncStorage.getItem("account");
+        if (accStr) {
+          try {
+            const acc = JSON.parse(accStr);
+            token = acc?.token || acc?.accessToken || token;
+          } catch (e) {
+            console.warn("Failed to parse account for token", e);
+          }
+        }
+      }
+
+      if (!token) {
+        throw new Error("No token found");
+      }
+
+      const response = await fetch(
+        `${config.API_BASE}/appointments/${appointmentId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to delete appointment");
+      }
+
+      return true;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleSaveAppointment = async () => {
+    // Validation
+    if (!appointmentData.hospital.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập tên bệnh viện hoặc phòng khám");
+      return;
+    }
+
+    if (appointmentData.selectedMembers.length === 0) {
+      Alert.alert("Lỗi", "Vui lòng chọn ít nhất một thành viên");
+      return;
+    }
+
+    if (!appointmentData.firstDate) {
+      Alert.alert("Lỗi", "Vui lòng chọn ngày khám đầu tiên");
+      return;
+    }
+
+    setSavingAppointment(true);
+
+    try {
+      if (editingAppointment) {
+        // Update existing appointment
+        await updateAppointment(editingAppointment.id, appointmentData);
+        Alert.alert("Thành công", "Đã cập nhật lịch khám thành công!");
+      } else {
+        // Create new appointment
+        await createAppointment(appointmentData);
+        Alert.alert("Thành công", "Đã tạo lịch khám định kỳ thành công!");
+      }
+
+      // Reset form
+      setAppointmentData({
+        frequency: "Hàng tháng",
+        hospital: "",
+        selectedMembers: [],
+        firstDate: new Date(),
+        note: "",
+      });
+      setEditingAppointment(null);
+
+      // Close modal and reload appointments
+      setAppointmentModalVisible(false);
+      await loadAppointments();
+    } catch (error) {
+      Alert.alert("Lỗi", error.message || "Không thể lưu lịch khám");
+    } finally {
+      setSavingAppointment(false);
+    }
+  };
+
+  // Handle edit appointment
+  const handleEditAppointment = (appointment) => {
+    setEditingAppointment(appointment);
+    setAppointmentData({
+      frequency: appointment.frequency,
+      hospital: appointment.hospitalName,
+      selectedMembers: appointment.participants?.map((p) => p.userId) || [],
+      firstDate: new Date(appointment.firstDate),
+      note: appointment.note || "",
+    });
+    setAppointmentModalVisible(true);
+  };
+
+  // Handle delete appointment
+  const handleDeleteAppointment = async (appointmentId) => {
+    Alert.alert("Xác nhận xóa", "Bạn có chắc chắn muốn xóa lịch khám này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteAppointment(appointmentId);
+            Alert.alert("Thành công", "Đã xóa lịch khám thành công!");
+            await loadAppointments();
+          } catch (error) {
+            Alert.alert("Lỗi", error.message || "Không thể xóa lịch khám");
+          }
+        },
+      },
+    ]);
+  };
+
+  // Format date for display
+  const formatDate = (date) => {
+    if (!date) return "Chọn ngày";
+    const d = new Date(date);
+    const day = d.getDate().toString().padStart(2, "0");
+    const month = (d.getMonth() + 1).toString().padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Handle date picker change
+  const onDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || appointmentData.firstDate;
+    setShowDatePicker(Platform.OS === "ios"); // Keep open on iOS
+    setAppointmentData({ ...appointmentData, firstDate: currentDate });
+  };
+
   const renderMemberCard = ({ item }) => (
     <TouchableOpacity
       style={styles.memberCard}
@@ -477,7 +932,7 @@ const FamilyHealthScreen = () => {
       activeOpacity={0.7}
     >
       <LinearGradient
-        colors={["#ffffff", "#f8fafc"]}
+        colors={["#ffffff", "#f1f5f9"]}
         style={styles.cardGradient}
       >
         <View style={styles.cardHeader}>
@@ -494,7 +949,14 @@ const FamilyHealthScreen = () => {
           </View>
           <View style={styles.memberInfo}>
             <Text style={styles.memberName}>{item.name}</Text>
-            <Text style={styles.memberRelation}>{item.relation}</Text>
+            <Text
+              style={[
+                styles.memberRelation,
+                item.relation === "Chủ hộ" && styles.ownerRelationText,
+              ]}
+            >
+              {item.relation}
+            </Text>
           </View>
           {isOwner && (
             <TouchableOpacity
@@ -515,11 +977,7 @@ const FamilyHealthScreen = () => {
         <View style={styles.cardBody}>
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
-              <Ionicons
-                name="calendar-outline"
-                size={14}
-                color={TEXT_SECONDARY}
-              />
+              <Ionicons name="calendar-outline" size={14} color="#4b5563" />
               <Text style={styles.infoLabel}>Tuổi:</Text>
             </View>
             <Text style={styles.infoValue}>{item.age} tuổi</Text>
@@ -623,8 +1081,20 @@ const FamilyHealthScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[PRIMARY, SECONDARY]} style={styles.header}>
-        <Text style={styles.headerTitle}>Sức khỏe gia đình</Text>
+      <LinearGradient
+        colors={[PRIMARY, SECONDARY]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Sức khỏe gia đình</Text>
+          {familyMembers.length > 0 && (
+            <View style={styles.memberCountBadge}>
+              <Text style={styles.memberCountText}>{familyMembers.length}</Text>
+            </View>
+          )}
+        </View>
         {isOwner && (
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -768,19 +1238,214 @@ const FamilyHealthScreen = () => {
           </LinearGradient>
         </View>
 
+        {/* Health Check Appointment Section */}
+        <View style={styles.appointmentSection}>
+          <LinearGradient
+            colors={[PRIMARY, SECONDARY]}
+            style={styles.appointmentHeader}
+          >
+            <View style={styles.appointmentHeaderContent}>
+              <Ionicons name="calendar" size={24} color="#fff" />
+              <View style={styles.appointmentTitleContainer}>
+                <Text style={styles.appointmentHeaderTitle}>
+                  Lịch khám định kỳ
+                </Text>
+                {existingAppointments.length > 0 && (
+                  <View style={styles.appointmentCountBadge}>
+                    <Text style={styles.appointmentCountText}>
+                      {existingAppointments.length}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            {isOwner && (
+              <TouchableOpacity
+                style={styles.addAppointmentBtn}
+                onPress={() => setAppointmentModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </LinearGradient>
+
+          <View style={styles.appointmentContent}>
+            {existingAppointments.length > 0 ? (
+              <>
+                {getDisplayedAppointments().map((appointment, index) => (
+                  <View
+                    key={appointment.id || index}
+                    style={styles.appointmentCard}
+                  >
+                    <View style={styles.appointmentCardHeader}>
+                      <View style={styles.appointmentInfo}>
+                        <Text style={styles.appointmentTitle}>
+                          {appointment.hospitalName}
+                        </Text>
+                        <Text style={styles.appointmentFrequency}>
+                          {appointment.frequency}
+                        </Text>
+                      </View>
+                      {isOwner && (
+                        <View style={styles.appointmentActions}>
+                          <TouchableOpacity
+                            style={styles.editAppointmentBtn}
+                            onPress={() => handleEditAppointment(appointment)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="pencil" size={16} color={PRIMARY} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.deleteAppointmentBtn}
+                            onPress={() =>
+                              handleDeleteAppointment(appointment.id)
+                            }
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={16}
+                              color={DANGER}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.appointmentDetails}>
+                      <View style={styles.appointmentDetailRow}>
+                        <Ionicons
+                          name="time"
+                          size={14}
+                          color={TEXT_SECONDARY}
+                        />
+                        <Text style={styles.appointmentDetailText}>
+                          Ngày khám đầu tiên:{" "}
+                        </Text>
+                        <View
+                          style={[
+                            styles.appointmentStatusBadge,
+                            {
+                              backgroundColor: `${
+                                getAppointmentStatus(appointment.firstDate)
+                                  .color
+                              }15`,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.appointmentStatusText,
+                              {
+                                color: getAppointmentStatus(
+                                  appointment.firstDate
+                                ).color,
+                              },
+                            ]}
+                          >
+                            {getAppointmentStatus(appointment.firstDate).text}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.appointmentDetailRow}>
+                        <Ionicons
+                          name="people"
+                          size={14}
+                          color={TEXT_SECONDARY}
+                        />
+                        <Text style={styles.appointmentDetailText}>
+                          {appointment.participants?.length || 0} thành viên
+                        </Text>
+                      </View>
+                      {appointment.note && (
+                        <View style={styles.appointmentDetailRow}>
+                          <Ionicons
+                            name="document-text"
+                            size={14}
+                            color={TEXT_SECONDARY}
+                          />
+                          <Text style={styles.appointmentDetailText}>
+                            {appointment.note}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+
+                {/* Show More/Less Button */}
+                {existingAppointments.length > 3 && (
+                  <TouchableOpacity
+                    style={styles.showMoreButton}
+                    onPress={toggleShowAllAppointments}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.showMoreText}>
+                      {showAllAppointments
+                        ? `Thu gọn`
+                        : `Xem thêm ${
+                            existingAppointments.length - 3
+                          } lịch hẹn`}
+                    </Text>
+                    <Ionicons
+                      name={showAllAppointments ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color={PRIMARY}
+                    />
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              <View style={styles.noAppointmentContainer}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={48}
+                  color={TEXT_MUTED}
+                />
+                <Text style={styles.noAppointmentText}>
+                  Chưa có lịch khám định kỳ
+                </Text>
+                {isOwner && (
+                  <Text style={styles.noAppointmentSubText}>
+                    Nhấn + để tạo lịch khám cho gia đình
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={PRIMARY} />
             <Text style={styles.loadingText}>Đang tải danh sách...</Text>
           </View>
         ) : filteredMembers.length > 0 ? (
-          <FlatList
-            data={filteredMembers}
-            renderItem={renderMemberCard}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            style={styles.list}
-          />
+          <View style={styles.membersContainer}>
+            {getDisplayedMembers().map((member) => (
+              <View key={member.id}>{renderMemberCard({ item: member })}</View>
+            ))}
+
+            {/* Show More/Less Button for Members */}
+            {filteredMembers.length > 3 && (
+              <TouchableOpacity
+                style={styles.showMoreMembersButton}
+                onPress={toggleShowAllMembers}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.showMoreMembersText}>
+                  {showAllMembers
+                    ? `Thu gọn`
+                    : `Xem thêm ${filteredMembers.length - 3} thành viên`}
+                </Text>
+                <Ionicons
+                  name={showAllMembers ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color={PRIMARY}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         ) : familyMembers.length === 0 ? (
           <View style={styles.emptyContainer}>
             <LinearGradient
@@ -1181,23 +1846,290 @@ const FamilyHealthScreen = () => {
                     </View>
                   </View>
                 </View>
-
-                <LinearGradient
-                  colors={[DANGER, "#dc2626"]}
-                  style={styles.checkBtn}
-                >
-                  <TouchableOpacity
-                    style={styles.checkBtnInner}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="heart" size={20} color="#fff" />
-                    <Text style={styles.checkBtnText}>
-                      Kiểm tra sức khỏe ngay
-                    </Text>
-                  </TouchableOpacity>
-                </LinearGradient>
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Đặt Lịch Khám Định Kỳ */}
+      <Modal
+        visible={appointmentModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAppointmentModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <LinearGradient
+              colors={[PRIMARY, SECONDARY]}
+              style={styles.modalHeader}
+            >
+              <Text style={styles.modalTitle}>
+                {editingAppointment
+                  ? "Cập nhật lịch khám"
+                  : "Đặt lịch khám định kỳ"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setAppointmentModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <ScrollView
+              style={styles.modalBody}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Frequency Selection */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Tần suất khám</Text>
+                <View style={styles.frequencyButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.frequencyBtn,
+                      appointmentData.frequency === "Hàng tháng" &&
+                        styles.frequencyBtnActive,
+                    ]}
+                    onPress={() =>
+                      setAppointmentData({
+                        ...appointmentData,
+                        frequency: "Hàng tháng",
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.frequencyBtnText,
+                        appointmentData.frequency === "Hàng tháng" &&
+                          styles.frequencyBtnTextActive,
+                      ]}
+                    >
+                      Hàng tháng
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.frequencyBtn,
+                      appointmentData.frequency === "Hàng quý" &&
+                        styles.frequencyBtnActive,
+                    ]}
+                    onPress={() =>
+                      setAppointmentData({
+                        ...appointmentData,
+                        frequency: "Hàng quý",
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.frequencyBtnText,
+                        appointmentData.frequency === "Hàng quý" &&
+                          styles.frequencyBtnTextActive,
+                      ]}
+                    >
+                      Hàng quý
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.frequencyBtn,
+                      appointmentData.frequency === "Hàng năm" &&
+                        styles.frequencyBtnActive,
+                    ]}
+                    onPress={() =>
+                      setAppointmentData({
+                        ...appointmentData,
+                        frequency: "Hàng năm",
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.frequencyBtnText,
+                        appointmentData.frequency === "Hàng năm" &&
+                          styles.frequencyBtnTextActive,
+                      ]}
+                    >
+                      Hàng năm
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Hospital Selection */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Bệnh viện / Phòng khám</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="business-outline"
+                    size={20}
+                    color={TEXT_MUTED}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Nhập tên bệnh viện hoặc phòng khám"
+                    placeholderTextColor={TEXT_MUTED}
+                    value={appointmentData.hospital}
+                    onChangeText={(text) =>
+                      setAppointmentData({ ...appointmentData, hospital: text })
+                    }
+                  />
+                </View>
+              </View>
+
+              {/* Member Selection */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Chọn thành viên tham gia</Text>
+                <View style={styles.memberSelection}>
+                  {familyMembers.map((member, index) => (
+                    <TouchableOpacity
+                      key={member.id || index}
+                      style={[
+                        styles.memberSelectItem,
+                        appointmentData.selectedMembers.includes(
+                          member.memberId
+                        ) && styles.memberSelectItemActive,
+                      ]}
+                      onPress={() => {
+                        const selectedIds = appointmentData.selectedMembers;
+                        const isSelected = selectedIds.includes(
+                          member.memberId
+                        );
+                        const newSelection = isSelected
+                          ? selectedIds.filter((id) => id !== member.memberId)
+                          : [...selectedIds, member.memberId];
+                        setAppointmentData({
+                          ...appointmentData,
+                          selectedMembers: newSelection,
+                        });
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.memberSelectInfo}>
+                        {member.avatarUrl ? (
+                          <Image
+                            source={{ uri: member.avatarUrl }}
+                            style={styles.memberSelectAvatar}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <Text style={styles.memberSelectAvatarText}>
+                            {member.avatar}
+                          </Text>
+                        )}
+                        <Text style={styles.memberSelectName}>
+                          {member.name}
+                        </Text>
+                      </View>
+                      {appointmentData.selectedMembers.includes(
+                        member.memberId
+                      ) && (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color={PRIMARY}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Next Date */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Ngày khám đầu tiên</Text>
+                <TouchableOpacity
+                  style={styles.inputContainer}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={20}
+                    color={TEXT_MUTED}
+                    style={styles.inputIcon}
+                  />
+                  <Text style={[styles.textInput, styles.dateDisplayText]}>
+                    {formatDate(appointmentData.firstDate)}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color={TEXT_MUTED} />
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    testID="dateTimePicker"
+                    value={appointmentData.firstDate}
+                    mode="date"
+                    is24Hour={true}
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={onDateChange}
+                    minimumDate={new Date()}
+                  />
+                )}
+              </View>
+
+              {/* Notes */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Ghi chú (không bắt buộc)</Text>
+                <View style={[styles.inputContainer, styles.textAreaContainer]}>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={20}
+                    color={TEXT_MUTED}
+                    style={[styles.inputIcon, styles.textAreaIcon]}
+                  />
+                  <TextInput
+                    style={[styles.textInput, styles.textArea]}
+                    placeholder="Ghi chú thêm về lịch khám..."
+                    placeholderTextColor={TEXT_MUTED}
+                    value={appointmentData.note}
+                    onChangeText={(text) =>
+                      setAppointmentData({ ...appointmentData, note: text })
+                    }
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.appointmentActions}>
+                <TouchableOpacity
+                  style={styles.cancelAppointmentBtn}
+                  onPress={() => setAppointmentModalVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.cancelAppointmentBtnText}>Hủy</Text>
+                </TouchableOpacity>
+                <LinearGradient
+                  colors={[PRIMARY, SECONDARY]}
+                  style={styles.saveAppointmentBtn}
+                >
+                  <TouchableOpacity
+                    style={styles.saveAppointmentBtnInner}
+                    onPress={handleSaveAppointment}
+                    disabled={savingAppointment}
+                    activeOpacity={0.8}
+                  >
+                    {savingAppointment ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.saveAppointmentBtnText}>
+                        {editingAppointment
+                          ? "Cập nhật lịch khám"
+                          : "Lưu lịch khám"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1211,25 +2143,19 @@ const styles = StyleSheet.create({
     backgroundColor: BACKGROUND,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    paddingTop: 18,
+    paddingBottom: 18,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#fff",
-    textShadowColor: "rgba(0,0,0,0.3)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   headerActions: {
     flexDirection: "row",
@@ -1347,12 +2273,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginHorizontal: 4,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
     overflow: "hidden",
+    backgroundColor: "#ffffff",
   },
   cardGradient: {
     padding: 0,
@@ -1393,18 +2322,23 @@ const styles = StyleSheet.create({
   memberName: {
     fontSize: 18,
     fontWeight: "700",
-    color: TEXT_PRIMARY,
+    color: "#1f2937",
     marginBottom: 4,
   },
   memberRelation: {
     fontSize: 13,
-    color: TEXT_SECONDARY,
+    color: "#374151",
     fontWeight: "500",
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#e5e7eb",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     alignSelf: "flex-start",
+  },
+  ownerRelationText: {
+    backgroundColor: PRIMARY,
+    color: "#fff",
+    fontWeight: "600",
   },
   deleteBtn: {
     padding: 12,
@@ -1429,14 +2363,14 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: "#4b5563",
     fontWeight: "500",
     marginLeft: 6,
   },
   infoValue: {
     fontSize: 14,
     fontWeight: "600",
-    color: TEXT_PRIMARY,
+    color: "#111827",
   },
   statusBadge: {
     flexDirection: "row",
@@ -1622,12 +2556,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
-  },
-  inputContainer: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
   input: {
     paddingHorizontal: 16,
@@ -1839,6 +2767,355 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   closeBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
+  },
+
+  // Appointment Section Styles
+  appointmentSection: {
+    marginHorizontal: 8,
+    marginBottom: 16,
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  appointmentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  appointmentHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  appointmentTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  appointmentHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  appointmentCountBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 8,
+    minWidth: 24,
+    alignItems: "center",
+  },
+  appointmentCountText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  addAppointmentBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appointmentContent: {
+    padding: 16,
+  },
+  appointmentCard: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  showMoreButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "rgba(99, 102, 241, 0.2)",
+  },
+  showMoreText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: PRIMARY,
+    marginRight: 4,
+  },
+  // Styles for Members section
+  membersContainer: {
+    gap: 12,
+    paddingHorizontal: 20,
+  },
+  showMoreMembersButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "rgba(99, 102, 241, 0.2)",
+  },
+  showMoreMembersText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: PRIMARY,
+    marginRight: 4,
+  },
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  memberCountBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 8,
+    minWidth: 24,
+    alignItems: "center",
+  },
+  memberCountText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  appointmentCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  appointmentInfo: {
+    flex: 1,
+  },
+  appointmentTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  appointmentFrequency: {
+    fontSize: 14,
+    color: PRIMARY,
+    fontWeight: "500",
+  },
+  appointmentActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editAppointmentBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+  },
+  deleteAppointmentBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  appointmentDetails: {
+    gap: 8,
+  },
+  appointmentDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  appointmentDetailText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
+  },
+  appointmentStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 4,
+  },
+  appointmentStatusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  noAppointmentContainer: {
+    alignItems: "center",
+    paddingVertical: 32,
+  },
+  noAppointmentText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: TEXT_SECONDARY,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  noAppointmentSubText: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+    textAlign: "center",
+  },
+
+  // Appointment Modal Styles
+  frequencyButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  frequencyBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+  },
+  frequencyBtnActive: {
+    borderColor: PRIMARY,
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+  },
+  frequencyBtnText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: TEXT_SECONDARY,
+  },
+  frequencyBtnTextActive: {
+    color: PRIMARY,
+    fontWeight: "600",
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: TEXT_PRIMARY,
+    marginBottom: 8,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 15,
+    color: TEXT_PRIMARY,
+    paddingVertical: 12,
+  },
+  dateDisplayText: {
+    flex: 1,
+    fontSize: 15,
+    color: TEXT_PRIMARY,
+    paddingVertical: 12,
+    fontWeight: "500",
+  },
+  textAreaContainer: {
+    alignItems: "flex-start",
+    paddingVertical: 12,
+  },
+  textAreaIcon: {
+    marginTop: 4,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: "top",
+    paddingTop: 4,
+  },
+  memberSelection: {
+    gap: 8,
+    marginTop: 8,
+  },
+  memberSelectItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  memberSelectItemActive: {
+    borderColor: PRIMARY,
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+  },
+  memberSelectInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  memberSelectAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  memberSelectAvatarText: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#e2e8f0",
+    textAlign: "center",
+    lineHeight: 32,
+    fontSize: 16,
+  },
+  memberSelectName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: TEXT_PRIMARY,
+  },
+  appointmentActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 24,
+    paddingBottom: 20,
+  },
+  cancelAppointmentBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+  },
+  cancelAppointmentBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: TEXT_SECONDARY,
+  },
+  saveAppointmentBtn: {
+    flex: 2,
+    borderRadius: 12,
+  },
+  saveAppointmentBtnInner: {
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  saveAppointmentBtnText: {
     fontSize: 15,
     fontWeight: "600",
     color: "#fff",
