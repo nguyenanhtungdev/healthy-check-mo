@@ -10,6 +10,7 @@ import ContactScreen from "./ContactScreen";
 import ProfileScreen from "./ProfileScreen ";
 import FamilyHealthScreen from "./FamilyHealthScreen";
 import WellnessTrackerScreen from "./WellnessTrackerScreen";
+import HealthRecordScreen from "./HealthRecordScreen";
 
 const Tab = createBottomTabNavigator();
 const PRIMARY = "#667eea";
@@ -39,6 +40,8 @@ const AppNavigator = ({ onLogout }) => {
 
           if (route.name === "Home") {
             iconName = focused ? "home" : "home-outline";
+          } else if (route.name === "HealthRecord") {
+            iconName = focused ? "heart" : "heart-outline";
           } else if (route.name === "Family") {
             iconName = focused ? "people" : "people-outline";
           } else if (route.name === "Contact") {
@@ -66,6 +69,11 @@ const AppNavigator = ({ onLogout }) => {
       <Tab.Screen name="Home" options={{ tabBarLabel: "Trang chủ" }}>
         {(props) => <HomeScreen {...props} account={account} />}
       </Tab.Screen>
+      <Tab.Screen
+        name="HealthRecord"
+        component={HealthRecordScreen}
+        options={{ tabBarLabel: "Ghi nhận" }}
+      />
       <Tab.Screen
         name="Family"
         component={FamilyHealthScreen}

@@ -8,6 +8,7 @@ const RootStack = createNativeStackNavigator();
 import Login from "./views/Login";
 import AppNavigator from "./views/AppNavigator";
 import HelpScreen from "./views/HelpScreen";
+import HealthRecordScreen from "./views/HealthRecordScreen";
 import TermsScreen from "./views/TermsScreen";
 import AboutScreen from "./views/AboutScreen";
 import PrivacyScreen from "./views/PrivacyScreen";
