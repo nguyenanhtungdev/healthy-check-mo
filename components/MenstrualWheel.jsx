@@ -111,16 +111,21 @@ const styles = StyleSheet.create({
   centerTextWrapper: {
     position: "absolute",
     alignItems: "center",
+    justifyContent: "center",
+    width: "80%",
+    height: "80%",
   },
   centerTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "700",
     color: "#111",
+    textAlign: "center",
   },
   centerSubtitle: {
-    fontSize: 14,
+    fontSize: 11,
     color: "#666",
-    marginTop: 4,
+    marginTop: 2,
+    textAlign: "center",
   },
 });
 

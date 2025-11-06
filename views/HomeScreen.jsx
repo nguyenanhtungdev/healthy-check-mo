@@ -191,7 +191,9 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Xin chào,</Text>
-            <Text style={styles.userName}>Nguyễn Anh Tùng</Text>
+            <Text style={styles.userName}>
+              {account?.fullName || "Người dùng"}
+            </Text>
           </View>
           <TouchableOpacity style={styles.notificationButton}>
             <Ionicons name="notifications" size={24} color="#fff" />
@@ -252,60 +254,110 @@ const HomeScreen = ({ navigation }) => {
         {account && account.gender === false && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Quản lý chu kỳ kinh nguyệt</Text>
-            <View style={styles.metricCard}>
-              <View style={{ alignItems: "center", marginBottom: 12 }}>
-                <MenstrualWheel
-                  lastPeriodStart={menstrual.lastPeriodStart}
-                  cycleLength={menstrual.cycleLength || 28}
-                  periodLength={menstrual.periodLength || 5}
-                  size={160}
-                />
-              </View>
-              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
-                Kỳ gần nhất
-              </Text>
-              <Text style={{ color: "#444", marginBottom: 8 }}>
-                {menstrual.lastPeriodStart || "Chưa đặt"}
-              </Text>
-              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
-                Chu kỳ trung bình
-              </Text>
-              <Text style={{ color: "#444", marginBottom: 8 }}>
-                {menstrual.cycleLength
-                  ? `${menstrual.cycleLength} ngày`
-                  : "Chưa đặt"}
-              </Text>
-              <Text style={{ fontWeight: "700", marginBottom: 6 }}>
-                Thời gian hành kinh
-              </Text>
-              <Text style={{ color: "#444", marginBottom: 12 }}>
-                {menstrual.periodLength
-                  ? `${menstrual.periodLength} ngày`
-                  : "Chưa đặt"}
-              </Text>
-              {(() => {
-                const next = predictNextPeriod(
-                  menstrual.lastPeriodStart,
-                  menstrual.cycleLength
-                );
-                if (next)
-                  return (
-                    <Text style={{ color: "#0f172a", marginBottom: 8 }}>
-                      Dự kiến kỳ tiếp theo: {next.toISOString().slice(0, 10)}
-                    </Text>
-                  );
-                return null;
-              })()}
-              <View
-                style={{ flexDirection: "row", justifyContent: "flex-end" }}
+            <View style={styles.menstrualCard}>
+              <LinearGradient
+                colors={["#fdf2f8", "#fce7f3", "#fce7f3"]}
+                style={styles.menstrualGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
               >
+                <View style={styles.menstrualHeader}>
+                  <View style={styles.menstrualIconContainer}>
+                    <Ionicons name="flower" size={24} color="#ec4899" />
+                  </View>
+                  <View style={styles.menstrualHeaderText}>
+                    <Text style={styles.menstrualTitle}>Chu kỳ của bạn</Text>
+                    <Text style={styles.menstrualSubtitle}>
+                      Theo dõi và dự đoán chu kỳ
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.menstrualWheelContainer}>
+                  <MenstrualWheel
+                    lastPeriodStart={menstrual.lastPeriodStart}
+                    cycleLength={menstrual.cycleLength || 28}
+                    periodLength={menstrual.periodLength || 5}
+                    size={140}
+                  />
+                </View>
+
+                <View style={styles.menstrualInfoGrid}>
+                  <View style={styles.menstrualInfoItem}>
+                    <View style={styles.menstrualInfoIcon}>
+                      <Ionicons name="calendar" size={16} color="#ec4899" />
+                    </View>
+                    <Text style={styles.menstrualInfoLabel}>Kỳ gần nhất</Text>
+                    <Text style={styles.menstrualInfoValue}>
+                      {menstrual.lastPeriodStart || "Chưa đặt"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.menstrualInfoItem}>
+                    <View style={styles.menstrualInfoIcon}>
+                      <Ionicons name="refresh" size={16} color="#ec4899" />
+                    </View>
+                    <Text style={styles.menstrualInfoLabel}>Chu kỳ</Text>
+                    <Text style={styles.menstrualInfoValue}>
+                      {menstrual.cycleLength
+                        ? `${menstrual.cycleLength} ngày`
+                        : "Chưa đặt"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.menstrualInfoItem}>
+                    <View style={styles.menstrualInfoIcon}>
+                      <Ionicons name="time" size={16} color="#ec4899" />
+                    </View>
+                    <Text style={styles.menstrualInfoLabel}>Thời gian</Text>
+                    <Text style={styles.menstrualInfoValue}>
+                      {menstrual.periodLength
+                        ? `${menstrual.periodLength} ngày`
+                        : "Chưa đặt"}
+                    </Text>
+                  </View>
+                </View>
+
+                {(() => {
+                  const next = predictNextPeriod(
+                    menstrual.lastPeriodStart,
+                    menstrual.cycleLength
+                  );
+                  if (next)
+                    return (
+                      <View style={styles.nextPeriodCard}>
+                        <View style={styles.nextPeriodIcon}>
+                          <Ionicons
+                            name="trending-up"
+                            size={20}
+                            color="#ec4899"
+                          />
+                        </View>
+                        <View style={styles.nextPeriodText}>
+                          <Text style={styles.nextPeriodLabel}>
+                            Dự kiến kỳ tiếp theo
+                          </Text>
+                          <Text style={styles.nextPeriodDate}>
+                            {next.toLocaleDateString("vi-VN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  return null;
+                })()}
+
                 <TouchableOpacity
                   onPress={() => setShowMenstrualModal(true)}
-                  style={[styles.primaryButton, { paddingHorizontal: 14 }]}
+                  style={styles.menstrualEditButton}
                 >
-                  <Text style={styles.primaryButtonText}>Sửa</Text>
+                  <Ionicons name="create" size={18} color="#fff" />
+                  <Text style={styles.menstrualEditText}>Chỉnh sửa</Text>
                 </TouchableOpacity>
-              </View>
+              </LinearGradient>
             </View>
           </View>
         )}
@@ -628,6 +680,140 @@ const styles = StyleSheet.create({
     borderColor: "#e6e9f2",
   },
   ghostButtonText: { color: "#666", fontWeight: "600" },
+
+  // Menstrual cycle styles
+  menstrualCard: {
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#ec4899",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menstrualGradient: {
+    padding: 20,
+  },
+  menstrualHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  menstrualIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(236, 72, 153, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  menstrualHeaderText: {
+    flex: 1,
+  },
+  menstrualTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#831843",
+    marginBottom: 2,
+  },
+  menstrualSubtitle: {
+    fontSize: 13,
+    color: "#be185d",
+    opacity: 0.8,
+  },
+  menstrualWheelContainer: {
+    alignItems: "center",
+    marginBottom: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.5)",
+    borderRadius: 16,
+    padding: 20,
+    overflow: "hidden",
+  },
+  menstrualInfoGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    marginTop: 8,
+  },
+  menstrualInfoItem: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  menstrualInfoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(236, 72, 153, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  menstrualInfoLabel: {
+    fontSize: 11,
+    color: "#be185d",
+    fontWeight: "600",
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  menstrualInfoValue: {
+    fontSize: 12,
+    color: "#831843",
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  nextPeriodCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: "#ec4899",
+  },
+  nextPeriodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(236, 72, 153, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  nextPeriodText: {
+    flex: 1,
+  },
+  nextPeriodLabel: {
+    fontSize: 13,
+    color: "#be185d",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  nextPeriodDate: {
+    fontSize: 16,
+    color: "#831843",
+    fontWeight: "800",
+  },
+  menstrualEditButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ec4899",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  menstrualEditText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+    marginLeft: 6,
+  },
 });
 
 export default HomeScreen;
