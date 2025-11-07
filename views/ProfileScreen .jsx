@@ -8,6 +8,8 @@ import {
   TextInput,
   Image,
   Alert,
+  Modal,
+  Dimensions,
 } from "react-native";
 import RefreshableScrollView from "../components/RefreshableScrollView";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -51,6 +53,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
     gender: null,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
   // navigation is provided by the navigator; use it to push help/terms/about/privacy
   // (ProfileScreen is used inside a Tab navigator which is nested in a root stack)
 
@@ -462,22 +465,27 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       {/* Profile Info Card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarContainer}>
-          <LinearGradient
-            colors={["#667eea", "#764ba2"]}
-            style={styles.avatarGradient}
+          <TouchableOpacity
+            onPress={() => avatarUrl && setShowAvatarModal(true)}
+            activeOpacity={avatarUrl ? 0.8 : 1}
           >
-            {avatarUrl ? (
-              <Image
-                source={{ uri: avatarUrl }}
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.defaultAvatarContainer}>
-                <Ionicons name="person" size={50} color="#667eea" />
-              </View>
-            )}
-          </LinearGradient>
+            <LinearGradient
+              colors={["#667eea", "#764ba2"]}
+              style={styles.avatarGradient}
+            >
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.defaultAvatarContainer}>
+                  <Ionicons name="person" size={50} color="#667eea" />
+                </View>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.editAvatarButton}
             onPress={async () => await pickAndUploadImage()}
@@ -841,6 +849,41 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       {/* Help/Terms/About/Privacy are handled via navigation.navigate from the Profile menu */}
 
       <View style={styles.bottomSpacer} />
+
+      {/* Avatar Modal */}
+      <Modal
+        visible={showAvatarModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAvatarModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackground}
+            activeOpacity={1}
+            onPress={() => setShowAvatarModal(false)}
+          >
+            <View style={styles.modalContent}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowAvatarModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+
+              {avatarUrl && (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.fullScreenAvatar}
+                  resizeMode="contain"
+                />
+              )}
+
+              <Text style={styles.modalHint}>Nhấn để đóng</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </RefreshableScrollView>
   );
 };
@@ -1304,7 +1347,47 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 40,
   },
-  // modalOverlay removed — use stack navigation instead
+  // Avatar Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBackground: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "90%",
+    height: "80%",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  closeButton: {
+    position: "absolute",
+    top: -50,
+    right: 10,
+    zIndex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 20,
+    padding: 8,
+  },
+  fullScreenAvatar: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 20,
+  },
+  modalHint: {
+    position: "absolute",
+    bottom: -40,
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 14,
+    fontStyle: "italic",
+  },
 });
 
 export default ProfileScreen;

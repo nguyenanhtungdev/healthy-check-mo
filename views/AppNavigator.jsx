@@ -1,6 +1,7 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { View, StyleSheet, Text, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -11,11 +12,14 @@ import ContactScreen from "./NotificationScreen";
 import ProfileScreen from "./ProfileScreen ";
 import FamilyHealthScreen from "./FamilyHealthScreen";
 import WellnessTrackerScreen from "./WellnessTrackerScreen";
+import AppointmentDetailScreen from "./AppointmentDetailScreen";
+import RemindersScreen from "./RemindersScreen";
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 const PRIMARY = "#667eea";
 
-const AppNavigator = ({ onLogout }) => {
+const TabNavigator = ({ onLogout, navigation: parentNavigation }) => {
   const [accountId, setAccountId] = useState(null);
   const [account, setAccount] = useState(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -172,6 +176,8 @@ const AppNavigator = ({ onLogout }) => {
           <ContactScreen
             {...props}
             onUnreadCountChange={setUnreadNotificationCount}
+            stackNavigation={parentNavigation}
+            tabNavigation={props.navigation}
           />
         )}
       </Tab.Screen>
@@ -246,5 +252,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+const AppNavigator = ({ onLogout }) => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="MainTabs">
+        {(props) => (
+          <TabNavigator
+            {...props}
+            onLogout={onLogout}
+            navigation={props.navigation}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="AppointmentDetail"
+        component={AppointmentDetailScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="RemindersScreen"
+        component={RemindersScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
 
 export default AppNavigator;

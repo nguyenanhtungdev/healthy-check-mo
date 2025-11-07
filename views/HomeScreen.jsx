@@ -65,7 +65,13 @@ const HomeScreen = ({ navigation }) => {
       color: "#667eea",
       screen: "Contact",
     },
-    { id: 2, title: "Thuốc của tôi", icon: "medkit", color: "#ec4899" },
+    {
+      id: 2,
+      title: "Nhắc nhở",
+      icon: "notifications",
+      color: "#6366f1",
+      screen: "RemindersScreen",
+    },
     {
       id: 3,
       title: "Lịch sử khám",
@@ -197,10 +203,6 @@ const HomeScreen = ({ navigation }) => {
               {account?.fullName || "Người dùng"}
             </Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications" size={24} color="#fff" />
-            <View style={styles.badge} />
-          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -513,7 +515,7 @@ const styles = StyleSheet.create({
   gradientHeader: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 22,
+    paddingBottom: 18,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     shadowColor: "#667eea",
@@ -529,27 +531,6 @@ const styles = StyleSheet.create({
   },
   greeting: { fontSize: 15, color: "#fff", opacity: 0.9 },
   userName: { fontSize: 24, fontWeight: "800", color: "#fff", marginTop: 4 },
-  notificationButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-  },
-  badge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#ef4444",
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
   section: { marginBottom: 28 },

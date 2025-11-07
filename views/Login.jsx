@@ -12,6 +12,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -65,7 +66,7 @@ const Login = ({ navigation, onLoginSuccess }) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      setMessage("Please enter email and password.");
+      setMessage("Vui lòng nhập email và mật khẩu.");
       return;
     }
     setLoading(true);
@@ -87,13 +88,27 @@ const Login = ({ navigation, onLoginSuccess }) => {
       }
 
       if (!res.ok) {
-        const msg = (json && json.message) || text || "Login failed.";
+        // Customize error messages based on status code
+        let msg = "Đăng nhập thất bại.";
+        if (res.status === 401) {
+          msg = "Email hoặc mật khẩu không đúng. Vui lòng thử lại.";
+        } else if (res.status === 400) {
+          msg = "Thông tin đăng nhập không hợp lệ.";
+        } else if (res.status === 429) {
+          msg = "Quá nhiều lần thử. Vui lòng thử lại sau.";
+        } else if (res.status >= 500) {
+          msg = "Lỗi server. Vui lòng thử lại sau.";
+        } else {
+          // Use server message if available, otherwise use default
+          msg = (json && json.message) || text || "Đăng nhập thất bại.";
+        }
         setMessage(msg);
         setSuccess(false);
       } else {
-        const msg = (json && json.message) || "Login successful.";
-        setMessage(msg);
-        setSuccess(true);
+        // Không set message và success để không hiển thị modal
+        // setMessage(msg);
+        // setSuccess(true);
+
         // store account info and token in local storage for later use
         try {
           if (json) {
@@ -138,7 +153,7 @@ const Login = ({ navigation, onLoginSuccess }) => {
       }
     } catch (err) {
       console.error(err);
-      setMessage("Network error while logging in.");
+      setMessage("Lỗi kết nối mạng. Vui lòng kiểm tra kết nối và thử lại.");
     } finally {
       setLoading(false);
     }
@@ -282,13 +297,39 @@ const Login = ({ navigation, onLoginSuccess }) => {
 
               {/* Verify/Register moved to SignUp screen */}
 
-              {/* Message */}
+              {/* Message Modal */}
               {message ? (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={{ color: "#333", textAlign: "center" }}>
-                    {message}
-                  </Text>
-                </View>
+                <Modal
+                  visible={!!message}
+                  transparent={true}
+                  animationType="fade"
+                  onRequestClose={() => setMessage("")}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.modalContainer}>
+                      <View style={styles.modalHeader}>
+                        <Ionicons
+                          name={success ? "checkmark-circle" : "alert-circle"}
+                          size={24}
+                          color={success ? "#10b981" : "#ef4444"}
+                        />
+                        <Text style={styles.modalTitle}>
+                          {success ? "Thành công" : "Thông báo"}
+                        </Text>
+                      </View>
+                      <Text style={styles.modalMessage}>{message}</Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.modalButton,
+                          success && styles.modalButtonSuccess,
+                        ]}
+                        onPress={() => setMessage("")}
+                      >
+                        <Text style={styles.modalButtonText}>Đóng</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
               ) : null}
 
               {/* success banner intentionally removed; overlay spinner is used */}
@@ -538,6 +579,74 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontWeight: "700",
     fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.98)",
+    borderRadius: 24,
+    padding: 28,
+    minWidth: 300,
+    maxWidth: 340,
+    alignItems: "center",
+    shadowColor: "#667eea",
+    shadowOffset: {
+      width: 0,
+      height: 15,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 25,
+    elevation: 15,
+    borderWidth: 1,
+    borderColor: "rgba(102, 126, 234, 0.1)",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1f2937",
+    marginLeft: 10,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: "#4b5563",
+    textAlign: "center",
+    lineHeight: 26,
+    marginBottom: 28,
+  },
+  modalButton: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 16,
+    minWidth: 140,
+    shadowColor: "#667eea",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modalButtonSuccess: {
+    backgroundColor: "#10b981",
+    shadowColor: "#10b981",
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
   },
 });
 
