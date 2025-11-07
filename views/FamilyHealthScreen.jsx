@@ -1095,17 +1095,6 @@ const FamilyHealthScreen = () => {
             </View>
           )}
         </View>
-        {isOwner && (
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => setModalVisible(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        )}
       </LinearGradient>
 
       <RefreshableScrollView
@@ -1478,6 +1467,22 @@ const FamilyHealthScreen = () => {
           </View>
         )}
       </RefreshableScrollView>
+
+      {/* Floating Action Button */}
+      {isOwner && (
+        <TouchableOpacity
+          style={styles.floatingActionButton}
+          onPress={() => setModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={[PRIMARY, SECONDARY]}
+            style={styles.floatingButtonGradient}
+          >
+            <Ionicons name="add" size={28} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       {/* Modal Thêm Thành Viên */}
       <Modal
@@ -2144,8 +2149,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 18,
+    paddingTop: 26,
+    paddingBottom: 26,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     flexDirection: "row",
@@ -2157,24 +2162,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#fff",
   },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
+  // Floating Action Button Styles
+  floatingActionButton: {
+    position: "absolute",
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
   },
-  addBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.2)",
+  floatingButtonGradient: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   content: {
     flex: 1,
