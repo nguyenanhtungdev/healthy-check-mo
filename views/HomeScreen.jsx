@@ -8,12 +8,18 @@ import {
   TextInput,
   Alert,
   Button,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
+  Image,
 } from "react-native";
 import RefreshableScrollView from "../components/RefreshableScrollView";
 import MenstrualWheel from "../components/MenstrualWheel";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import config from "../config";
 
 const PRIMARY = "#6366f1";
 const SECONDARY = "#8b5cf6";
@@ -89,7 +95,15 @@ const HomeScreen = ({ navigation }) => {
   ];
 
   const handleActionPress = (action) => {
-    if (action.screen) navigation.navigate(action.screen);
+    if (action.id === 1) {
+      // Đặt lịch khám - show modal
+      setShowAppointmentModal(true);
+    } else if (action.id === 2) {
+      // Nhắc nhở - chuyển màn hình
+      navigation.navigate("RemindersScreen");
+    } else if (action.screen) {
+      navigation.navigate(action.screen);
+    }
   };
 
   const [account, setAccount] = useState(null);
@@ -100,6 +114,75 @@ const HomeScreen = ({ navigation }) => {
   });
   const [showMenstrualModal, setShowMenstrualModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Appointment modal states
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [appointmentForm, setAppointmentForm] = useState({
+    hospitalName: "",
+    frequency: "Hàng tháng",
+    firstDate: "",
+    note: "",
+    selectedMembers: [], // Array of member IDs
+  });
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [menstrualTip, setMenstrualTip] = useState("");
+
+  // Mảng các lời khuyên chăm sóc chu kỳ kinh nguyệt
+  const menstrualCareTips = [
+    {
+      icon: "water",
+      text: "Uống đủ nước giúp giảm đầy hơi và cải thiện tuần hoàn máu trong kỳ kinh nguyệt",
+      color: "#06b6d4",
+    },
+    {
+      icon: "fitness",
+      text: "Tập yoga nhẹ nhàng giúp giảm đau bụng kinh và cải thiện tâm trạng",
+      color: "#10b981",
+    },
+    {
+      icon: "moon",
+      text: "Ngủ đủ 7-8 tiếng mỗi ngày giúp cân bằng hormone và giảm mệt mỏi",
+      color: "#8b5cf6",
+    },
+    {
+      icon: "nutrition",
+      text: "Bổ sung thực phẩm giàu sắt như rau xanh, thịt đỏ để phòng ngừa thiếu máu",
+      color: "#f59e0b",
+    },
+    {
+      icon: "heart",
+      text: "Giữ ấm vùng bụng dưới bằng túi chườm nóng để giảm đau kinh",
+      color: "#ef4444",
+    },
+    {
+      icon: "cafe",
+      text: "Hạn chế caffeine và đồ ăn mặn trong kỳ kinh để giảm đau và đầy hơi",
+      color: "#92400e",
+    },
+    {
+      icon: "happy",
+      text: "Dành thời gian thư giãn và làm những việc bạn yêu thích để cải thiện tâm trạng",
+      color: "#ec4899",
+    },
+    {
+      icon: "medkit",
+      text: "Ghi chép lại các triệu chứng để theo dõi sức khỏe và tư vấn bác sĩ khi cần",
+      color: "#6366f1",
+    },
+    {
+      icon: "leaf",
+      text: "Thử trà gừng hoặc trà bạc hà để giảm buồn nôn và chuột rút",
+      color: "#10b981",
+    },
+    {
+      icon: "bicycle",
+      text: "Đi bộ nhẹ nhàng 20-30 phút mỗi ngày giúp giảm đau và tăng cường năng lượng",
+      color: "#06b6d4",
+    },
+  ];
 
   const reloadProfile = async () => {
     setRefreshing(true);
@@ -140,7 +223,53 @@ const HomeScreen = ({ navigation }) => {
 
   useEffect(() => {
     reloadProfile();
+    loadFamilyMembers();
+    // Chọn ngẫu nhiên một lời khuyén chăm sóc chu kỳ
+    const randomTip =
+      menstrualCareTips[Math.floor(Math.random() * menstrualCareTips.length)];
+    setMenstrualTip(randomTip);
   }, []);
+
+  // Load family members
+  const loadFamilyMembers = async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        console.warn("No token found for loading family members");
+        return;
+      }
+
+      const response = await fetch(`${config.API_BASE}/family-members/list`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Transform API data
+      const transformedMembers = data.map((item) => ({
+        id: item.id,
+        memberId: item.member.id,
+        name: item.member.fullName || "Chưa có tên",
+        relation: item.relation,
+        avatarUrl: item.member.urlImage,
+        email: item.member.email,
+        phone: item.member.phone,
+      }));
+
+      setFamilyMembers(transformedMembers);
+    } catch (error) {
+      console.error("Error loading family members:", error);
+      setFamilyMembers([]);
+    }
+  };
 
   const saveMenstrual = async (m) => {
     try {
@@ -186,6 +315,141 @@ const HomeScreen = ({ navigation }) => {
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     d.setDate(d.getDate() + cycle);
     return d;
+  };
+
+  // Get token for API calls
+  const getToken = async () => {
+    try {
+      const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
+      for (const key of tokenKeys) {
+        const token = await AsyncStorage.getItem(key);
+        if (token) {
+          return token;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Error getting token:", error);
+      return null;
+    }
+  };
+
+  // Handle create appointment
+  const handleCreateAppointment = async () => {
+    if (!appointmentForm.hospitalName.trim()) {
+      Alert.alert("Thông báo", "Vui lòng nhập tên bệnh viện");
+      return;
+    }
+    if (!appointmentForm.firstDate) {
+      Alert.alert("Thông báo", "Vui lòng chọn ngày khám");
+      return;
+    }
+    if (appointmentForm.selectedMembers.length === 0) {
+      Alert.alert("Thông báo", "Vui lòng chọn ít nhất một thành viên");
+      return;
+    }
+
+    setAppointmentLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        Alert.alert("Lỗi", "Không tìm thấy token xác thực");
+        setAppointmentLoading(false);
+        return;
+      }
+
+      const requestBody = {
+        hospital: appointmentForm.hospitalName.trim(),
+        frequency: appointmentForm.frequency,
+        note: appointmentForm.note.trim(),
+        firstDate: appointmentForm.firstDate,
+        memberIds: appointmentForm.selectedMembers,
+      };
+
+      const response = await fetch(
+        `${config.API_BASE}/appointments/create`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        Alert.alert("Thành công", "Đã tạo lịch khám định kỳ thành công!", [
+          {
+            text: "OK",
+            onPress: () => {
+              setShowAppointmentModal(false);
+              resetAppointmentForm();
+            },
+          },
+        ]);
+      } else {
+        Alert.alert(
+          "Lỗi",
+          data.message || "Không thể tạo lịch khám. Vui lòng thử lại."
+        );
+      }
+    } catch (error) {
+      console.error("Error creating appointment:", error);
+      Alert.alert("Lỗi", "Đã xảy ra lỗi khi tạo lịch khám. Vui lòng thử lại.");
+    } finally {
+      setAppointmentLoading(false);
+    }
+  };
+
+  // Reset appointment form
+  const resetAppointmentForm = () => {
+    setAppointmentForm({
+      hospitalName: "",
+      frequency: "Hàng tháng",
+      firstDate: "",
+      note: "",
+      selectedMembers: [],
+    });
+    setShowDatePicker(false);
+    setSelectedDate(new Date());
+  };
+
+  // Handle close appointment modal
+  const handleCloseAppointmentModal = () => {
+    setShowAppointmentModal(false);
+    resetAppointmentForm();
+  };
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return "Chọn ngày";
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Handle date picker change
+  const onDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || appointmentForm.firstDate;
+    setShowDatePicker(Platform.OS === "ios"); // Keep open on iOS
+    setSelectedDate(currentDate);
+    const formattedDate = currentDate.toISOString().split("T")[0];
+    setAppointmentForm((prev) => ({ ...prev, firstDate: formattedDate }));
+  };
+
+  // Show date picker
+  const showDatepicker = () => {
+    if (appointmentForm.firstDate) {
+      setSelectedDate(new Date(appointmentForm.firstDate));
+    } else {
+      setSelectedDate(new Date());
+    }
+    setShowDatePicker(true);
   };
 
   return (
@@ -354,6 +618,47 @@ const HomeScreen = ({ navigation }) => {
                   return null;
                 })()}
 
+                {/* Lời khuyên chăm sóc */}
+                {menstrualTip && (
+                  <View style={styles.menstrualTipCard}>
+                    <View style={styles.menstrualTipHeader}>
+                      <View style={styles.menstrualTipHeaderLeft}>
+                        <View
+                          style={[
+                            styles.menstrualTipIcon,
+                            { backgroundColor: menstrualTip.color + "20" },
+                          ]}
+                        >
+                          <Ionicons
+                            name={menstrualTip.icon}
+                            size={18}
+                            color={menstrualTip.color}
+                          />
+                        </View>
+                        <Text style={styles.menstrualTipTitle}>
+                          💡 Lời khuyên hôm nay
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const randomTip =
+                            menstrualCareTips[
+                              Math.floor(Math.random() * menstrualCareTips.length)
+                            ];
+                          setMenstrualTip(randomTip);
+                        }}
+                        style={styles.menstrualTipRefreshBtn}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="refresh" size={18} color="#ec4899" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.menstrualTipText}>
+                      {menstrualTip.text}
+                    </Text>
+                  </View>
+                )}
+
                 <TouchableOpacity
                   onPress={() => setShowMenstrualModal(true)}
                   style={styles.menstrualEditButton}
@@ -405,6 +710,303 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
+
+        {/* Modal Đặt lịch khám */}
+        <Modal
+          visible={showAppointmentModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={handleCloseAppointmentModal}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <LinearGradient
+                colors={[PRIMARY, SECONDARY]}
+                style={styles.modalHeader}
+              >
+                <Text style={styles.modalTitle}>Đặt lịch khám định kỳ</Text>
+                <TouchableOpacity
+                  onPress={handleCloseAppointmentModal}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+              </LinearGradient>
+
+              <ScrollView
+                style={styles.modalBody}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Frequency Selection */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Tần suất khám</Text>
+                  <View style={styles.frequencyButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.frequencyBtn,
+                        appointmentForm.frequency === "Hàng tháng" &&
+                          styles.frequencyBtnActive,
+                      ]}
+                      onPress={() =>
+                        setAppointmentForm({
+                          ...appointmentForm,
+                          frequency: "Hàng tháng",
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.frequencyBtnText,
+                          appointmentForm.frequency === "Hàng tháng" &&
+                            styles.frequencyBtnTextActive,
+                        ]}
+                      >
+                        Hàng tháng
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.frequencyBtn,
+                        appointmentForm.frequency === "Hàng quý" &&
+                          styles.frequencyBtnActive,
+                      ]}
+                      onPress={() =>
+                        setAppointmentForm({
+                          ...appointmentForm,
+                          frequency: "Hàng quý",
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.frequencyBtnText,
+                          appointmentForm.frequency === "Hàng quý" &&
+                            styles.frequencyBtnTextActive,
+                        ]}
+                      >
+                        Hàng quý
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.frequencyBtn,
+                        appointmentForm.frequency === "Hàng năm" &&
+                          styles.frequencyBtnActive,
+                      ]}
+                      onPress={() =>
+                        setAppointmentForm({
+                          ...appointmentForm,
+                          frequency: "Hàng năm",
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.frequencyBtnText,
+                          appointmentForm.frequency === "Hàng năm" &&
+                            styles.frequencyBtnTextActive,
+                        ]}
+                      >
+                        Hàng năm
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Hospital Selection */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Bệnh viện / Phòng khám</Text>
+                  <View style={styles.inputContainer}>
+                    <Ionicons
+                      name="business-outline"
+                      size={20}
+                      color="#9ca3af"
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Nhập tên bệnh viện hoặc phòng khám"
+                      placeholderTextColor="#9ca3af"
+                      value={appointmentForm.hospitalName}
+                      onChangeText={(text) =>
+                        setAppointmentForm({
+                          ...appointmentForm,
+                          hospitalName: text,
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+
+                {/* Member Selection */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Chọn thành viên tham gia</Text>
+                  <View style={styles.memberSelection}>
+                    {familyMembers.length === 0 ? (
+                      <View style={styles.noMembersContainer}>
+                        <Ionicons name="people-outline" size={24} color="#9ca3af" />
+                        <Text style={styles.noMembersText}>
+                          Chưa có thành viên nào
+                        </Text>
+                      </View>
+                    ) : (
+                      familyMembers.map((member, index) => (
+                        <TouchableOpacity
+                          key={member.memberId || index}
+                          style={[
+                            styles.memberSelectItem,
+                            appointmentForm.selectedMembers.includes(
+                              member.memberId
+                            ) && styles.memberSelectItemActive,
+                          ]}
+                          onPress={() => {
+                            const selectedIds = appointmentForm.selectedMembers;
+                            const isSelected = selectedIds.includes(
+                              member.memberId
+                            );
+                            const newSelection = isSelected
+                              ? selectedIds.filter((id) => id !== member.memberId)
+                              : [...selectedIds, member.memberId];
+                            setAppointmentForm({
+                              ...appointmentForm,
+                              selectedMembers: newSelection,
+                            });
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.memberSelectInfo}>
+                            {member.avatarUrl ? (
+                              <Image
+                                source={{ uri: member.avatarUrl }}
+                                style={styles.memberSelectAvatar}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={styles.memberSelectAvatarPlaceholder}>
+                                <Text style={styles.memberSelectAvatarText}>
+                                  {member.name?.charAt(0)?.toUpperCase() || "?"}
+                                </Text>
+                              </View>
+                            )}
+                            <View>
+                              <Text style={styles.memberSelectName}>
+                                {member.name}
+                              </Text>
+                              {member.relation && (
+                                <Text style={styles.memberSelectRelation}>
+                                  {member.relation}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          {appointmentForm.selectedMembers.includes(
+                            member.memberId
+                          ) && (
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={20}
+                              color={PRIMARY}
+                            />
+                          )}
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                </View>
+
+                {/* Next Date */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Ngày khám đầu tiên</Text>
+                  <TouchableOpacity
+                    style={styles.inputContainer}
+                    onPress={showDatepicker}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="calendar-outline"
+                      size={20}
+                      color="#9ca3af"
+                      style={styles.inputIcon}
+                    />
+                    <Text style={[styles.textInput, styles.dateDisplayText]}>
+                      {formatDate(appointmentForm.firstDate)}
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="#9ca3af" />
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      testID="dateTimePicker"
+                      value={selectedDate}
+                      mode="date"
+                      is24Hour={true}
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      onChange={onDateChange}
+                      minimumDate={new Date()}
+                    />
+                  )}
+                </View>
+
+                {/* Notes */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Ghi chú (không bắt buộc)</Text>
+                  <View style={[styles.inputContainer, styles.textAreaContainer]}>
+                    <Ionicons
+                      name="document-text-outline"
+                      size={20}
+                      color="#9ca3af"
+                      style={[styles.inputIcon, styles.textAreaIcon]}
+                    />
+                    <TextInput
+                      style={[styles.textInput, styles.textArea]}
+                      placeholder="Ghi chú thêm về lịch khám..."
+                      placeholderTextColor="#9ca3af"
+                      value={appointmentForm.note}
+                      onChangeText={(text) =>
+                        setAppointmentForm({ ...appointmentForm, note: text })
+                      }
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.appointmentActions}>
+                  <TouchableOpacity
+                    style={styles.cancelAppointmentBtn}
+                    onPress={handleCloseAppointmentModal}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.cancelAppointmentBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+                  <LinearGradient
+                    colors={[PRIMARY, SECONDARY]}
+                    style={styles.saveAppointmentBtn}
+                  >
+                    <TouchableOpacity
+                      style={styles.saveAppointmentBtnInner}
+                      onPress={handleCreateAppointment}
+                      disabled={appointmentLoading}
+                      activeOpacity={0.8}
+                    >
+                      {appointmentLoading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.saveAppointmentBtnText}>
+                          Lưu lịch khám
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </LinearGradient>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={showMenstrualModal}
@@ -796,6 +1398,259 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
     marginLeft: 6,
+  },
+  menstrualTipCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: "#ec4899",
+    shadowColor: "#ec4899",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  menstrualTipHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  menstrualTipHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  menstrualTipIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  menstrualTipTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#831843",
+  },
+  menstrualTipRefreshBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(236, 72, 153, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menstrualTipText: {
+    fontSize: 13,
+    color: "#be185d",
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+
+  // Appointment Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1f2937",
+    marginBottom: 8,
+  },
+  frequencyButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  frequencyBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+  },
+  frequencyBtnActive: {
+    borderColor: PRIMARY,
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+  },
+  frequencyBtnText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  frequencyBtnTextActive: {
+    color: PRIMARY,
+    fontWeight: "600",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1f2937",
+    paddingVertical: 12,
+  },
+  dateDisplayText: {
+    flex: 1,
+    fontSize: 15,
+    color: "#1f2937",
+    paddingVertical: 12,
+    fontWeight: "500",
+  },
+  textAreaContainer: {
+    alignItems: "flex-start",
+    paddingVertical: 12,
+  },
+  textAreaIcon: {
+    marginTop: 4,
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: "top",
+    paddingTop: 4,
+  },
+  memberSelection: {
+    gap: 8,
+    marginTop: 8,
+  },
+  memberSelectItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  memberSelectItemActive: {
+    borderColor: PRIMARY,
+    backgroundColor: "rgba(99, 102, 241, 0.1)",
+  },
+  memberSelectInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  memberSelectAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  memberSelectAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  memberSelectAvatarText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  memberSelectName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1f2937",
+  },
+  memberSelectRelation: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  noMembersContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 8,
+  },
+  noMembersText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    fontWeight: "500",
+  },
+  appointmentActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 24,
+    paddingBottom: 20,
+  },
+  cancelAppointmentBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+  },
+  cancelAppointmentBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  saveAppointmentBtn: {
+    flex: 2,
+    borderRadius: 12,
+  },
+  saveAppointmentBtnInner: {
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  saveAppointmentBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
   },
 });
 
