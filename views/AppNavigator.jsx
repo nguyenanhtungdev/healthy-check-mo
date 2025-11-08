@@ -260,7 +260,7 @@ const AppNavigator = ({ onLogout }) => {
         headerShown: false,
       }}
     >
-      <Stack.Screen name="MainTabs">
+      <Stack.Screen name="TabNavigator">
         {(props) => (
           <TabNavigator
             {...props}
