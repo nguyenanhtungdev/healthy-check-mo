@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Switch,
   TextInput,
-  Image,
   Alert,
   Modal,
   Dimensions,
@@ -17,8 +16,10 @@ import * as ImagePicker from "expo-image-picker";
 import { ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import config from "../config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import offlineStorage from "../services/offlineStorage";
 
 // Configure Cloudinary - set UPLOAD_PRESET if you have an unsigned preset.
 const CLOUDINARY_CLOUD_NAME = "dpujkjzzh"; // provided
@@ -41,6 +42,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [editing, setEditing] = useState(false);
   const [defaultLogoProfile, setDefaultLogoProfile] = useState(null);
+  const [isOnline, setIsOnline] = useState(true);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -56,6 +58,12 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   // navigation is provided by the navigator; use it to push help/terms/about/privacy
   // (ProfileScreen is used inside a Tab navigator which is nested in a root stack)
+
+  // Initialize offline storage
+  useEffect(() => {
+    offlineStorage.init();
+    setIsOnline(offlineStorage.checkOnlineStatus());
+  }, []);
 
   useEffect(() => {
     const fetchAppLogo = async () => {
@@ -212,6 +220,40 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
   const reloadProfile = useCallback(async () => {
     try {
       setLoadingProfile(true);
+
+      // 1. Luôn load offline data trước (hiển thị ngay)
+      const idToUse = localAccountId || accountId;
+      if (idToUse) {
+        const offlineProfile = await offlineStorage.getProfile(idToUse);
+        if (offlineProfile) {
+          console.log("📦 Loaded profile from offline storage");
+          setAccount(offlineProfile);
+          setAvatarUrl(offlineProfile.image || defaultLogoProfile);
+          setForm({
+            fullName: offlineProfile.fullName || offlineProfile.name || "",
+            email: offlineProfile.email || "",
+            phone: offlineProfile.phone || offlineProfile.mobile || "",
+            birth: offlineProfile.birth || "",
+            address: offlineProfile.address || "",
+            height: offlineProfile.height ? String(offlineProfile.height) : "",
+            weight: offlineProfile.weight ? String(offlineProfile.weight) : "",
+            bloodType: offlineProfile.bloodType || offlineProfile.blood || "",
+            gender: offlineProfile.gender,
+          });
+        }
+      }
+
+      // 2. Kiểm tra online status
+      const online = offlineStorage.checkOnlineStatus();
+      setIsOnline(online);
+
+      if (!online) {
+        console.log("📵 Offline mode - using cached data");
+        setLoadingProfile(false);
+        return;
+      }
+
+      // 3. Nếu online, fetch từ server
       const tokenKeys = ["token", "accessToken", "authToken", "authorization"];
       let token = null;
       for (const k of tokenKeys) {
@@ -242,7 +284,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       }
       if (!token) {
         console.warn(
-          "No auth token found in AsyncStorage; skipping profile fetch."
+          "No auth token found in AsyncStorage; using offline data only."
         );
         setLoadingProfile(false);
         return;
@@ -315,6 +357,13 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
         json.image = finalimage;
       }
 
+      // Lưu vào offline database
+      await offlineStorage.saveProfile({
+        ...json,
+        accountId: json.accountId || json.id || idToSend,
+        image: finalimage,
+      });
+
       setAccount(json);
       setAvatarUrl(finalimage);
       setLocalAccountId(json.accountId || localAccountId);
@@ -364,6 +413,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
 
     // Optimistically update local state/storage
     const updatedLocal = Object.assign({}, account || {}, {
+      accountId: payload.userId,
       email: payload.email,
       phone: payload.phone,
       address: payload.address,
@@ -372,14 +422,33 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       weight: payload.weight,
       bloodType: payload.bloodType,
       image: payload.image,
+      fullName: payload.fullName,
       // ensure gender persisted locally (could be false)
       gender: typeof form.gender === "boolean" ? form.gender : account?.gender,
     });
     setAccount(updatedLocal);
+
+    // Lưu vào offline database ngay lập tức
+    await offlineStorage.saveProfile(updatedLocal);
+
     try {
       await AsyncStorage.setItem("account", JSON.stringify(updatedLocal));
     } catch (e) {
       console.warn("Failed to persist updated account locally", e);
+    }
+
+    // Kiểm tra kết nối mạng
+    const online = offlineStorage.checkOnlineStatus();
+    setIsOnline(online);
+
+    if (!online) {
+      Alert.alert(
+        "📵 Offline Mode",
+        "Thông tin đã được lưu. Sẽ tự động đồng bộ khi có kết nối mạng."
+      );
+      setIsSaving(false);
+      setEditing(false);
+      return;
     }
 
     try {
@@ -402,6 +471,7 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
           "Thông tin đã được cập nhật cục bộ nhưng chưa gửi được lên server (thiếu token)."
         );
         setEditing(false);
+        setIsSaving(false);
         return;
       }
 
@@ -462,6 +532,16 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
       style={styles.container}
       showsVerticalScrollIndicator={false}
     >
+      {/* Online/Offline Indicator */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline" size={16} color="#fff" />
+          <Text style={styles.offlineText}>
+            Chế độ offline - Dữ liệu sẽ đồng bộ khi có mạng
+          </Text>
+        </View>
+      )}
+
       {/* Profile Info Card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarContainer}>
@@ -477,7 +557,11 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
                 <Image
                   source={{ uri: avatarUrl }}
                   style={styles.avatarImage}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={300}
+                  placeholder={require("../assets/profile-default.png")}
+                  placeholderContentFit="cover"
                 />
               ) : (
                 <View style={styles.defaultAvatarContainer}>
@@ -875,7 +959,9 @@ const ProfileScreen = ({ navigation, onLogout, accountId }) => {
                 <Image
                   source={{ uri: avatarUrl }}
                   style={styles.fullScreenAvatar}
-                  resizeMode="contain"
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                  transition={300}
                 />
               )}
 
@@ -1346,6 +1432,24 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  // Offline Banner
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f59e0b",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  offlineText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 8,
   },
   // Avatar Modal Styles
   modalOverlay: {

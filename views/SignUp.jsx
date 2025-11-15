@@ -17,17 +17,111 @@ import config from "../config";
 export default function SignUp({ navigation, onRegistered, onCancel }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [step, setStep] = useState(1); // 1: enter email+pass -> send code; 2: enter code -> verify/register
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
   const [codeDigits, setCodeDigits] = useState(new Array(6).fill(""));
   const inputsRef = useRef([]);
 
   const API_BASE = config.API_BASE;
 
+  // Hàm validate mật khẩu
+  const validatePassword = (pwd) => {
+    const errors = [];
+    if (pwd.length < 8) {
+      errors.push("Ít nhất 8 ký tự");
+    }
+    if (!/[a-z]/.test(pwd)) {
+      errors.push("Có chữ thường");
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      errors.push("Có chữ IN HOA");
+    }
+    if (!/[0-9]/.test(pwd)) {
+      errors.push("Có số");
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) {
+      errors.push("Có ký tự đặc biệt");
+    }
+    return errors;
+  };
+
+  // Tính độ mạnh mật khẩu (0-5)
+  const getPasswordStrength = (pwd) => {
+    if (!pwd) return 0;
+    let strength = 0;
+    if (pwd.length >= 8) strength++;
+    if (/[a-z]/.test(pwd)) strength++;
+    if (/[A-Z]/.test(pwd)) strength++;
+    if (/[0-9]/.test(pwd)) strength++;
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) strength++;
+    return strength;
+  };
+
+  const getPasswordStrengthLabel = (strength) => {
+    if (strength === 0) return { text: "", color: "#e5e7eb" };
+    if (strength <= 2) return { text: "Yếu", color: "#ef4444" };
+    if (strength === 3) return { text: "Trung bình", color: "#f59e0b" };
+    if (strength === 4) return { text: "Mạnh", color: "#10b981" };
+    return { text: "Rất mạnh", color: "#059669" };
+  };
+
+  // Kiểm tra password khi thay đổi
+  const handlePasswordChange = (text) => {
+    setPassword(text);
+    if (text) {
+      const errors = validatePassword(text);
+      if (errors.length > 0) {
+        setPasswordError(`Mật khẩu cần: ${errors.join(", ")}`);
+      } else {
+        setPasswordError("");
+      }
+    } else {
+      setPasswordError("");
+    }
+
+    // Kiểm tra confirm password nếu đã nhập
+    if (confirmPassword && text !== confirmPassword) {
+      setConfirmPasswordError("Mật khẩu không khớp");
+    } else {
+      setConfirmPasswordError("");
+    }
+  };
+
+  // Kiểm tra confirm password
+  const handleConfirmPasswordChange = (text) => {
+    setConfirmPassword(text);
+    if (text && text !== password) {
+      setConfirmPasswordError("Mật khẩu không khớp");
+    } else {
+      setConfirmPasswordError("");
+    }
+  };
+
   const sendCode = async () => {
-    if (!email) return setMessage("Please enter your email.");
+    if (!email) return setMessage("Vui lòng nhập email.");
+    if (!password) return setMessage("Vui lòng nhập mật khẩu.");
+    if (!confirmPassword) return setMessage("Vui lòng nhập lại mật khẩu.");
+
+    // Validate password
+    const passwordErrors = validatePassword(password);
+    if (passwordErrors.length > 0) {
+      setPasswordError(`Mật khẩu cần: ${passwordErrors.join(", ")}`);
+      return;
+    }
+
+    // Check confirm password
+    if (password !== confirmPassword) {
+      setConfirmPasswordError("Mật khẩu không khớp");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     setEmailError("");
@@ -107,7 +201,7 @@ export default function SignUp({ navigation, onRegistered, onCancel }) {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.inner}>
             <View style={styles.card}>
-              <Text style={styles.title}>Create account</Text>
+              <Text style={styles.title}>Tạo tài khoản</Text>
 
               {step === 1 && (
                 <>
@@ -129,6 +223,8 @@ export default function SignUp({ navigation, onRegistered, onCancel }) {
                         autoCapitalize="none"
                         keyboardType="email-address"
                         style={styles.input}
+                        autoComplete="off"
+                        textContentType="none"
                       />
                     </View>
                     {!!emailError && (
@@ -136,26 +232,254 @@ export default function SignUp({ navigation, onRegistered, onCancel }) {
                     )}
                   </View>
 
-                  <View
-                    style={[
-                      styles.row,
-                      { marginTop: 12 },
-                      styles.inputContainer,
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={20}
-                      color="#667eea"
-                      style={{ marginRight: 8 }}
-                    />
-                    <TextInput
-                      placeholder="Enter password"
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry
-                      style={styles.input}
-                    />
+                  <View>
+                    <View
+                      style={[
+                        styles.row,
+                        { marginTop: 12 },
+                        styles.inputContainer,
+                        passwordError ? styles.inputError : null,
+                      ]}
+                    >
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={20}
+                        color="#667eea"
+                        style={{ marginRight: 8 }}
+                      />
+                      <TextInput
+                        placeholder="Nhập mật khẩu"
+                        value={password}
+                        onChangeText={handlePasswordChange}
+                        secureTextEntry={!showPassword}
+                        style={styles.input}
+                        autoComplete="off"
+                        textContentType="none"
+                        autoCorrect={false}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword(!showPassword)}
+                      >
+                        <Ionicons
+                          name={
+                            showPassword ? "eye-outline" : "eye-off-outline"
+                          }
+                          size={20}
+                          color="#999"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {!!passwordError && (
+                      <Text style={styles.errorText}>{passwordError}</Text>
+                    )}
+                    {password && (
+                      <View style={styles.strengthContainer}>
+                        <View style={styles.strengthBar}>
+                          {[1, 2, 3, 4, 5].map((level) => (
+                            <View
+                              key={level}
+                              style={[
+                                styles.strengthSegment,
+                                {
+                                  backgroundColor:
+                                    level <= getPasswordStrength(password)
+                                      ? getPasswordStrengthLabel(
+                                          getPasswordStrength(password)
+                                        ).color
+                                      : "#e5e7eb",
+                                },
+                              ]}
+                            />
+                          ))}
+                        </View>
+                        <Text
+                          style={[
+                            styles.strengthLabel,
+                            {
+                              color: getPasswordStrengthLabel(
+                                getPasswordStrength(password)
+                              ).color,
+                            },
+                          ]}
+                        >
+                          {
+                            getPasswordStrengthLabel(
+                              getPasswordStrength(password)
+                            ).text
+                          }
+                        </Text>
+                      </View>
+                    )}
+                    {password && (
+                      <View style={styles.requirementsContainer}>
+                        <View style={styles.requirementRow}>
+                          <Ionicons
+                            name={
+                              password.length >= 8
+                                ? "checkmark-circle"
+                                : "close-circle"
+                            }
+                            size={14}
+                            color={password.length >= 8 ? "#10b981" : "#9ca3af"}
+                          />
+                          <Text
+                            style={[
+                              styles.requirementText,
+                              password.length >= 8 && styles.requirementMet,
+                            ]}
+                          >
+                            Ít nhất 8 ký tự
+                          </Text>
+                        </View>
+                        <View style={styles.requirementRow}>
+                          <Ionicons
+                            name={
+                              /[a-z]/.test(password)
+                                ? "checkmark-circle"
+                                : "close-circle"
+                            }
+                            size={14}
+                            color={
+                              /[a-z]/.test(password) ? "#10b981" : "#9ca3af"
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.requirementText,
+                              /[a-z]/.test(password) && styles.requirementMet,
+                            ]}
+                          >
+                            Chữ thường (a-z)
+                          </Text>
+                        </View>
+                        <View style={styles.requirementRow}>
+                          <Ionicons
+                            name={
+                              /[A-Z]/.test(password)
+                                ? "checkmark-circle"
+                                : "close-circle"
+                            }
+                            size={14}
+                            color={
+                              /[A-Z]/.test(password) ? "#10b981" : "#9ca3af"
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.requirementText,
+                              /[A-Z]/.test(password) && styles.requirementMet,
+                            ]}
+                          >
+                            Chữ IN HOA (A-Z)
+                          </Text>
+                        </View>
+                        <View style={styles.requirementRow}>
+                          <Ionicons
+                            name={
+                              /[0-9]/.test(password)
+                                ? "checkmark-circle"
+                                : "close-circle"
+                            }
+                            size={14}
+                            color={
+                              /[0-9]/.test(password) ? "#10b981" : "#9ca3af"
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.requirementText,
+                              /[0-9]/.test(password) && styles.requirementMet,
+                            ]}
+                          >
+                            Số (0-9)
+                          </Text>
+                        </View>
+                        <View style={styles.requirementRow}>
+                          <Ionicons
+                            name={
+                              /[!@#$%^&*(),.?":{}|<>]/.test(password)
+                                ? "checkmark-circle"
+                                : "close-circle"
+                            }
+                            size={14}
+                            color={
+                              /[!@#$%^&*(),.?":{}|<>]/.test(password)
+                                ? "#10b981"
+                                : "#9ca3af"
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.requirementText,
+                              /[!@#$%^&*(),.?":{}|<>]/.test(password) &&
+                                styles.requirementMet,
+                            ]}
+                          >
+                            Ký tự đặc biệt (!@#$...)
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  <View>
+                    <View
+                      style={[
+                        styles.row,
+                        { marginTop: 12 },
+                        styles.inputContainer,
+                        confirmPasswordError ? styles.inputError : null,
+                      ]}
+                    >
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={20}
+                        color="#667eea"
+                        style={{ marginRight: 8 }}
+                      />
+                      <TextInput
+                        placeholder="Nhập lại mật khẩu"
+                        value={confirmPassword}
+                        onChangeText={handleConfirmPasswordChange}
+                        secureTextEntry={!showConfirmPassword}
+                        style={styles.input}
+                        autoComplete="off"
+                        textContentType="none"
+                        autoCorrect={false}
+                      />
+                      <TouchableOpacity
+                        onPress={() =>
+                          setShowConfirmPassword(!showConfirmPassword)
+                        }
+                      >
+                        <Ionicons
+                          name={
+                            showConfirmPassword
+                              ? "eye-outline"
+                              : "eye-off-outline"
+                          }
+                          size={20}
+                          color="#999"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {!!confirmPasswordError && (
+                      <Text style={styles.errorText}>
+                        {confirmPasswordError}
+                      </Text>
+                    )}
+                    {!confirmPasswordError &&
+                      confirmPassword &&
+                      password === confirmPassword && (
+                        <View style={styles.successRow}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={16}
+                            color="#10b981"
+                          />
+                          <Text style={styles.successText}>Mật khẩu khớp</Text>
+                        </View>
+                      )}
                   </View>
 
                   <TouchableOpacity
@@ -164,7 +488,7 @@ export default function SignUp({ navigation, onRegistered, onCancel }) {
                     disabled={loading}
                   >
                     <Text style={styles.buttonText}>
-                      {loading ? "Sending..." : "Send verification code"}
+                      {loading ? "Đang gửi..." : "Gửi mã xác nhận"}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -325,4 +649,68 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0",
   },
   emailError: { color: "#d9534f", marginTop: 6, marginLeft: 6 },
+  errorText: {
+    color: "#ef4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 6,
+  },
+  inputError: {
+    borderColor: "#ef4444",
+    borderWidth: 1.5,
+  },
+  successRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    marginLeft: 6,
+  },
+  successText: {
+    color: "#10b981",
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+  strengthContainer: {
+    marginTop: 8,
+    marginHorizontal: 6,
+  },
+  strengthBar: {
+    flexDirection: "row",
+    gap: 4,
+    marginBottom: 4,
+  },
+  strengthSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  requirementsContainer: {
+    marginTop: 8,
+    marginLeft: 6,
+    backgroundColor: "#f9fafb",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  requirementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 2,
+  },
+  requirementText: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginLeft: 6,
+  },
+  requirementMet: {
+    color: "#10b981",
+    fontWeight: "600",
+  },
 });

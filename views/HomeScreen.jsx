@@ -78,20 +78,6 @@ const HomeScreen = ({ navigation }) => {
       color: "#6366f1",
       screen: "RemindersScreen",
     },
-    {
-      id: 3,
-      title: "Lịch sử khám",
-      icon: "document-text",
-      color: "#f59e0b",
-      screen: "Profile",
-    },
-    {
-      id: 4,
-      title: "Tư vấn",
-      icon: "chatbubble-ellipses",
-      color: "#8b5cf6",
-      screen: "Contact",
-    },
   ];
 
   const handleActionPress = (action) => {
@@ -129,6 +115,152 @@ const HomeScreen = ({ navigation }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [familyMembers, setFamilyMembers] = useState([]);
   const [menstrualTip, setMenstrualTip] = useState("");
+  const [displayedTips, setDisplayedTips] = useState([]);
+  const [showAllTips, setShowAllTips] = useState(false);
+
+  // Mảng các lời khuyên sức khỏe hàng ngày
+  const healthTips = [
+    {
+      icon: "water",
+      title: "Uống đủ nước",
+      description:
+        "Uống ít nhất 8 ly nước mỗi ngày để duy trì độ ẩm cho cơ thể và cải thiện tuần hoàn máu.",
+      color: "#06b6d4",
+    },
+    {
+      icon: "walk",
+      title: "Đi bộ mỗi ngày",
+      description:
+        "Đi bộ 30 phút mỗi ngày giúp tăng cường sức khỏe tim mạch và giảm stress hiệu quả.",
+      color: "#10b981",
+    },
+    {
+      icon: "moon",
+      title: "Ngủ đủ giấc",
+      description:
+        "Ngủ 7-8 tiếng mỗi đêm giúp cơ thể phục hồi và tăng cường hệ miễn dịch tự nhiên.",
+      color: "#8b5cf6",
+    },
+    {
+      icon: "nutrition",
+      title: "Ăn nhiều rau xanh",
+      description:
+        "Bổ sung rau xanh giàu vitamin và khoáng chất để tăng cường sức đề kháng cho cơ thể.",
+      color: "#10b981",
+    },
+    {
+      icon: "fitness",
+      title: "Tập thể dục đều đặn",
+      description:
+        "Tập thể dục 3-4 lần/tuần giúp duy trì cân nặng lý tưởng và tăng cường sức bền.",
+      color: "#ef4444",
+    },
+    {
+      icon: "sunny",
+      title: "Tắm nắng sáng sớm",
+      description:
+        "Tắm nắng 10-15 phút vào buổi sáng giúp tổng hợp vitamin D tự nhiên cho xương khỏe.",
+      color: "#f59e0b",
+    },
+    {
+      icon: "leaf",
+      title: "Thở sâu thư giãn",
+      description:
+        "Dành 5-10 phút mỗi ngày để thở sâu và thiền giúp giảm căng thẳng, lo âu.",
+      color: "#10b981",
+    },
+    {
+      icon: "cafe",
+      title: "Hạn chế caffeine",
+      description:
+        "Uống không quá 2 tách cà phê/ngày và tránh caffeine sau 2h chiều để ngủ ngon hơn.",
+      color: "#92400e",
+    },
+    {
+      icon: "restaurant",
+      title: "Ăn đúng giờ",
+      description:
+        "Duy trì 3 bữa chính và 2 bữa phụ đều đặn giúp ổn định đường huyết và tăng cường trao đổi chất.",
+      color: "#f59e0b",
+    },
+    {
+      icon: "phone-portrait",
+      title: "Giảm thời gian màn hình",
+      description:
+        "Hạn chế sử dụng điện thoại, máy tính trước khi ngủ 1 tiếng để cải thiện chất lượng giấc ngủ.",
+      color: "#6366f1",
+    },
+    {
+      icon: "heart",
+      title: "Kiểm tra sức khỏe định kỳ",
+      description:
+        "Khám sức khỏe tổng quát 6 tháng/lần để phát hiện sớm các vấn đề sức khỏe tiềm ẩn.",
+      color: "#ef4444",
+    },
+    {
+      icon: "people",
+      title: "Giao lưu xã hội",
+      description:
+        "Duy trì mối quan hệ tích cực với gia đình, bạn bè giúp cải thiện sức khỏe tinh thần.",
+      color: "#8b5cf6",
+    },
+    {
+      icon: "book",
+      title: "Đọc sách mỗi ngày",
+      description:
+        "Đọc sách 20-30 phút/ngày giúp kích thích trí não và giảm nguy cơ suy giảm trí nhớ.",
+      color: "#6366f1",
+    },
+    {
+      icon: "flower",
+      title: "Tiếp xúc với thiên nhiên",
+      description:
+        "Dành thời gian trong công viên hoặc vườn cây giúp giảm stress và cải thiện tâm trạng.",
+      color: "#10b981",
+    },
+    {
+      icon: "musical-notes",
+      title: "Nghe nhạc thư giãn",
+      description:
+        "Nghe nhạc nhẹ nhàng 15-20 phút giúp giảm căng thẳng và cải thiện tâm trạng tích cực.",
+      color: "#8b5cf6",
+    },
+    {
+      icon: "thermometer",
+      title: "Giữ ấm cơ thể",
+      description:
+        "Mặc đủ ấm, đặc biệt giữ ấm chân và cổ để tránh cảm lạnh và các bệnh về đường hô hấp.",
+      color: "#ef4444",
+    },
+    {
+      icon: "hand-left",
+      title: "Rửa tay thường xuyên",
+      description:
+        "Rửa tay bằng xà phòng ít nhất 20 giây để ngăn ngừa vi khuẩn và virus có hại.",
+      color: "#06b6d4",
+    },
+    {
+      icon: "clipboard",
+      title: "Ghi nhật ký sức khỏe",
+      description:
+        "Ghi chép lại cảm giác, triệu chứng hàng ngày để theo dõi sức khỏe và tư vấn bác sĩ khi cần.",
+      color: "#6366f1",
+    },
+    {
+      icon: "car",
+      title: "Tư thế ngồi đúng",
+      description:
+        "Giữ lưng thẳng, chân đặt sát sàn khi ngồi làm việc để tránh đau lưng và mỏi cổ.",
+      color: "#f59e0b",
+    },
+    {
+      icon: "eye",
+      title: "Nghỉ ngơi mắt",
+      description:
+        "Áp dụng quy tắc 20-20-20: cứ 20 phút nhìn vật cách 20 feet trong 20 giây để bảo vệ mắt.",
+      color: "#06b6d4",
+    },
+  ];
 
   // Mảng các lời khuyên chăm sóc chu kỳ kinh nguyệt
   const menstrualCareTips = [
@@ -224,10 +356,14 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     reloadProfile();
     loadFamilyMembers();
-    // Chọn ngẫu nhiên một lời khuyén chăm sóc chu kỳ
-    const randomTip =
+    // Chọn ngẫu nhiên một lời khuyên chăm sóc chu kỳ
+    const randomMenstrualTip =
       menstrualCareTips[Math.floor(Math.random() * menstrualCareTips.length)];
-    setMenstrualTip(randomTip);
+    setMenstrualTip(randomMenstrualTip);
+
+    // Chọn ngẫu nhiên 4 lời khuyên sức khỏe để hiển thị ban đầu
+    const shuffledTips = [...healthTips].sort(() => 0.5 - Math.random());
+    setDisplayedTips(shuffledTips.slice(0, 4));
   }, []);
 
   // Load family members
@@ -366,17 +502,14 @@ const HomeScreen = ({ navigation }) => {
         memberIds: appointmentForm.selectedMembers,
       };
 
-      const response = await fetch(
-        `${config.API_BASE}/appointments/create`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
+      const response = await fetch(`${config.API_BASE}/appointments/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
 
       const data = await response.json();
 
@@ -450,6 +583,21 @@ const HomeScreen = ({ navigation }) => {
       setSelectedDate(new Date());
     }
     setShowDatePicker(true);
+  };
+
+  // Load more tips or refresh tips
+  const handleLoadMoreTips = () => {
+    if (showAllTips) {
+      // Refresh - chọn ngẫu nhiên 4 tip mới
+      const shuffledTips = [...healthTips].sort(() => 0.5 - Math.random());
+      setDisplayedTips(shuffledTips.slice(0, 4));
+      setShowAllTips(false);
+    } else {
+      // Show all tips
+      const shuffledTips = [...healthTips].sort(() => 0.5 - Math.random());
+      setDisplayedTips(shuffledTips);
+      setShowAllTips(true);
+    }
   };
 
   return (
@@ -636,14 +784,16 @@ const HomeScreen = ({ navigation }) => {
                           />
                         </View>
                         <Text style={styles.menstrualTipTitle}>
-                          💡 Lời khuyên hôm nay
+                          Lời khuyên hôm nay
                         </Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => {
                           const randomTip =
                             menstrualCareTips[
-                              Math.floor(Math.random() * menstrualCareTips.length)
+                              Math.floor(
+                                Math.random() * menstrualCareTips.length
+                              )
                             ];
                           setMenstrualTip(randomTip);
                         }}
@@ -696,19 +846,42 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lời khuyên hôm nay</Text>
-          <View style={styles.tipCard}>
-            <View style={styles.tipIcon}>
-              <Ionicons name="bulb" size={32} color="#f59e0b" />
-            </View>
-            <View style={styles.tipContent}>
-              <Text style={styles.tipTitle}>Uống đủ nước</Text>
-              <Text style={styles.tipDescription}>
-                Bạn nên uống thêm 200ml nước để đạt mục tiêu 2L/ngày. Giữ cơ thể
-                luôn được cung cấp đủ nước!
-              </Text>
-            </View>
+          <Text style={styles.sectionTitle}>Lời khuyên</Text>
+
+          <View style={styles.tipsContainer}>
+            {displayedTips.map((tip, index) => (
+              <View key={index} style={styles.tipCard}>
+                <View
+                  style={[
+                    styles.tipIcon,
+                    { backgroundColor: tip.color + "20" },
+                  ]}
+                >
+                  <Ionicons name={tip.icon} size={28} color={tip.color} />
+                </View>
+                <View style={styles.tipContent}>
+                  <Text style={styles.tipTitle}>{tip.title}</Text>
+                  <Text style={styles.tipDescription}>{tip.description}</Text>
+                </View>
+              </View>
+            ))}
           </View>
+
+          <TouchableOpacity
+            onPress={handleLoadMoreTips}
+            style={styles.loadMoreButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.loadMoreText}>
+              {showAllTips ? "Thu gọn" : "Xem thêm"}
+            </Text>
+            <Ionicons
+              name={showAllTips ? "chevron-up" : "chevron-down"}
+              size={16}
+              color="#667eea"
+              style={styles.loadMoreIcon}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Modal Đặt lịch khám */}
@@ -843,11 +1016,17 @@ const HomeScreen = ({ navigation }) => {
 
                 {/* Member Selection */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Chọn thành viên tham gia</Text>
+                  <Text style={styles.inputLabel}>
+                    Chọn thành viên tham gia
+                  </Text>
                   <View style={styles.memberSelection}>
                     {familyMembers.length === 0 ? (
                       <View style={styles.noMembersContainer}>
-                        <Ionicons name="people-outline" size={24} color="#9ca3af" />
+                        <Ionicons
+                          name="people-outline"
+                          size={24}
+                          color="#9ca3af"
+                        />
                         <Text style={styles.noMembersText}>
                           Chưa có thành viên nào
                         </Text>
@@ -868,7 +1047,9 @@ const HomeScreen = ({ navigation }) => {
                               member.memberId
                             );
                             const newSelection = isSelected
-                              ? selectedIds.filter((id) => id !== member.memberId)
+                              ? selectedIds.filter(
+                                  (id) => id !== member.memberId
+                                )
                               : [...selectedIds, member.memberId];
                             setAppointmentForm({
                               ...appointmentForm,
@@ -885,7 +1066,9 @@ const HomeScreen = ({ navigation }) => {
                                 resizeMode="cover"
                               />
                             ) : (
-                              <View style={styles.memberSelectAvatarPlaceholder}>
+                              <View
+                                style={styles.memberSelectAvatarPlaceholder}
+                              >
                                 <Text style={styles.memberSelectAvatarText}>
                                   {member.name?.charAt(0)?.toUpperCase() || "?"}
                                 </Text>
@@ -952,8 +1135,12 @@ const HomeScreen = ({ navigation }) => {
 
                 {/* Notes */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Ghi chú (không bắt buộc)</Text>
-                  <View style={[styles.inputContainer, styles.textAreaContainer]}>
+                  <Text style={styles.inputLabel}>
+                    Ghi chú (không bắt buộc)
+                  </Text>
+                  <View
+                    style={[styles.inputContainer, styles.textAreaContainer]}
+                  >
                     <Ionicons
                       name="document-text-outline"
                       size={20}
@@ -1219,18 +1406,54 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  tipIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#f59e0b20",
+  tipSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  tipRefreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(102, 126, 234, 0.1)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 16,
+  },
+  tipsContainer: {
+    gap: 12,
+  },
+  tipIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
   },
   tipContent: { flex: 1 },
-  tipTitle: { fontSize: 16, fontWeight: "700", color: "#111", marginBottom: 6 },
-  tipDescription: { fontSize: 14, color: "#666", lineHeight: 20 },
+  tipTitle: { fontSize: 15, fontWeight: "700", color: "#111", marginBottom: 4 },
+  tipDescription: { fontSize: 13, color: "#666", lineHeight: 18 },
+  loadMoreButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(102, 126, 234, 0.1)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "rgba(102, 126, 234, 0.2)",
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#667eea",
+  },
+  loadMoreIcon: {
+    marginLeft: 6,
+  },
   fieldInputStyled: {
     backgroundColor: "#fbfbff",
     borderWidth: 1,

@@ -16,6 +16,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import config from "../config";
+import RunningTracker from "../components/RunningTracker";
+import sleepTracker from "../services/sleepTracker";
+import offlineStorage from "../services/offlineStorage";
 // Note: we'll use the community DateTimePicker if available in the app environment
 let DateTimePicker = null;
 try {
@@ -147,22 +150,24 @@ const WellnessTrackerScreen = ({ navigation }) => {
   // Exercise Goals State
   const [exerciseGoals, setExerciseGoals] = useState({
     running: { goal: 5, actual: 2, unit: "km", completed: false },
-    pushups: { goal: 30, actual: 15, unit: "lần", completed: false },
     sleep: { goal: 8, actual: 6.5, unit: "giờ", completed: false },
   });
 
   const [editingExercise, setEditingExercise] = useState(null);
   const [editValue, setEditValue] = useState("");
 
+  // Running Tracker Modal State
+  const [runningModalVisible, setRunningModalVisible] = useState(false);
+
   // Calendar State
   const [history, setHistory] = useState({
     "2025-10-17": {
       meals: { breakfast: 361, lunch: 350, dinner: 0 },
-      exercise: { running: 2, pushups: 15, sleep: 6.5 },
+      exercise: { running: 2, sleep: 6.5 },
     },
     "2025-10-16": {
       meals: { breakfast: 350, lunch: 400, dinner: 250 },
-      exercise: { running: 5, pushups: 30, sleep: 8 },
+      exercise: { running: 5, sleep: 8 },
     },
   });
 
@@ -566,12 +571,55 @@ const WellnessTrackerScreen = ({ navigation }) => {
     loadAvailableFoods();
     loadWeeklySummary();
     loadMonthlySummary();
+    loadTodaySleep();
+    loadTodayRunning();
   }, []);
 
   useEffect(() => {
     loadMealsByDate(selectedDate);
     loadFoodSuggestions(selectedDate);
   }, [selectedDate]);
+
+  // Load today's sleep data
+  const loadTodaySleep = async () => {
+    const sleepHours = await sleepTracker.getTodaySleepHours();
+    setExerciseGoals((prev) => ({
+      ...prev,
+      sleep: {
+        ...prev.sleep,
+        actual: sleepHours,
+      },
+    }));
+  };
+
+  // Load today's running data
+  const loadTodayRunning = async () => {
+    try {
+      const accountStr = await AsyncStorage.getItem("account");
+      if (accountStr) {
+        const account = JSON.parse(accountStr);
+        const accountId = account.accountId || account.id;
+        const today = new Date().toISOString().split("T")[0];
+
+        const result = await offlineStorage.getTotalExercise(
+          accountId,
+          "running",
+          today
+        );
+        if (result.total > 0) {
+          setExerciseGoals((prev) => ({
+            ...prev,
+            running: {
+              ...prev.running,
+              actual: result.total,
+            },
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("❌ Failed to load running data:", error);
+    }
+  };
 
   // Handle meal creation
   const handleAddMeal = async () => {
@@ -825,20 +873,19 @@ const WellnessTrackerScreen = ({ navigation }) => {
   const renderExerciseCard = (type, data) => {
     const percentage = Math.min((data.actual / data.goal) * 100, 100);
     let exerciseLabel = "";
-    let exerciseIcon = "";
+    let exerciseIconName = "";
+    let exerciseIconColor = "";
 
     switch (type) {
       case "running":
         exerciseLabel = "Chạy bộ";
-        exerciseIcon = "🏃";
-        break;
-      case "pushups":
-        exerciseLabel = "Hít đất";
-        exerciseIcon = "💪";
+        exerciseIconName = "walk-outline";
+        exerciseIconColor = "#f59e0b";
         break;
       case "sleep":
         exerciseLabel = "Ngủ";
-        exerciseIcon = "😴";
+        exerciseIconName = "bed-outline";
+        exerciseIconColor = "#8b5cf6";
         break;
     }
 
@@ -846,7 +893,13 @@ const WellnessTrackerScreen = ({ navigation }) => {
       <View key={type} style={styles.exerciseCard}>
         <View style={styles.exerciseHeader}>
           <View style={styles.exerciseTitleGroup}>
-            <Text style={styles.exerciseIcon}>{exerciseIcon}</Text>
+            <View style={styles.exerciseIconContainer}>
+              <Ionicons
+                name={exerciseIconName}
+                size={28}
+                color={exerciseIconColor}
+              />
+            </View>
             <View>
               <Text style={styles.exerciseLabel}>{exerciseLabel}</Text>
               <Text style={styles.exerciseProgress}>
@@ -854,9 +907,20 @@ const WellnessTrackerScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
-          {data.completed && (
-            <Ionicons name="checkmark-circle" size={28} color={SUCCESS} />
-          )}
+          <View style={styles.exerciseHeaderActions}>
+            {type === "running" && (
+              <TouchableOpacity
+                style={styles.startRunButton}
+                onPress={() => setRunningModalVisible(true)}
+              >
+                <Ionicons name="play-circle" size={24} color={PRIMARY} />
+                <Text style={styles.startRunText}>Bắt đầu</Text>
+              </TouchableOpacity>
+            )}
+            {data.completed && (
+              <Ionicons name="checkmark-circle" size={28} color={SUCCESS} />
+            )}
+          </View>
         </View>
 
         <View style={styles.progressBarContainer}>
@@ -892,13 +956,8 @@ const WellnessTrackerScreen = ({ navigation }) => {
 
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Thực tế:</Text>
-            <View style={styles.inputBox}>
-              <TextInput
-                style={styles.exerciseInput}
-                value={String(data.actual)}
-                onChangeText={(value) => handleUpdateExercise(type, value)}
-                keyboardType="decimal-pad"
-              />
+            <View style={styles.valueDisplayBox}>
+              <Text style={styles.valueDisplayText}>{data.actual}</Text>
               <Text style={styles.unitText}>{data.unit}</Text>
             </View>
           </View>
@@ -1115,10 +1174,60 @@ const WellnessTrackerScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mục tiêu hàng ngày</Text>
           {renderExerciseCard("running", exerciseGoals.running)}
-          {renderExerciseCard("pushups", exerciseGoals.pushups)}
           {renderExerciseCard("sleep", exerciseGoals.sleep)}
         </View>
       </ScrollView>
+
+      {/* Running Tracker Modal */}
+      <Modal
+        visible={runningModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setRunningModalVisible(false)}
+      >
+        <RunningTracker
+          onClose={() => setRunningModalVisible(false)}
+          onSave={async (runData) => {
+            // Update exercise goals with running data
+            const updated = { ...exerciseGoals };
+            const newDistance = parseFloat(
+              (updated.running.actual + runData.distance / 1000).toFixed(2)
+            );
+            updated.running.actual = newDistance;
+            updated.running.completed =
+              updated.running.actual >= updated.running.goal;
+            setExerciseGoals(updated);
+
+            // Lưu vào SQLite
+            try {
+              const accountStr = await AsyncStorage.getItem("account");
+              if (accountStr) {
+                const account = JSON.parse(accountStr);
+                const accountId = account.accountId || account.id;
+                const today = new Date().toISOString().split("T")[0];
+
+                await offlineStorage.saveExerciseLog(
+                  accountId,
+                  "running",
+                  today,
+                  runData.distance / 1000, // km
+                  "km",
+                  {
+                    duration: runData.duration,
+                    pace: runData.pace,
+                    calories: runData.calories,
+                  }
+                );
+                console.log("✅ Running data saved to SQLite");
+              }
+            } catch (error) {
+              console.error("❌ Failed to save running data:", error);
+            }
+
+            setRunningModalVisible(false);
+          }}
+        />
+      </Modal>
 
       {/* Range Modal */}
       <Modal
@@ -1565,7 +1674,7 @@ const WellnessTrackerScreen = ({ navigation }) => {
                           calories: Math.round(
                             (selectedFoodForMeal.calories * portion) / 100
                           ),
-                          portion: `${portionAmount}g`,
+                          portion: portion,
                         };
 
                         handleAddFoodToMeal(foodItem);
@@ -2089,14 +2198,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
+  exerciseHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  startRunButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: `${PRIMARY}10`,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: PRIMARY,
+  },
+  startRunText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: PRIMARY,
+  },
   exerciseTitleGroup: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
-  exerciseIcon: {
-    fontSize: 32,
+  exerciseIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
   },
   exerciseLabel: {
     fontSize: 18,
@@ -2146,6 +2283,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER_COLOR,
   },
+  inputBoxDisabled: {
+    backgroundColor: "#e2e8f0",
+    opacity: 0.7,
+  },
   exerciseInput: {
     flex: 1,
     paddingHorizontal: 12,
@@ -2157,6 +2298,23 @@ const styles = StyleSheet.create({
   unitText: {
     fontSize: 13,
     color: TEXT_SECONDARY,
+    fontWeight: "600",
+  },
+  valueDisplayBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    gap: 8,
+  },
+  valueDisplayText: {
+    flex: 1,
+    fontSize: 15,
+    color: TEXT_PRIMARY,
     fontWeight: "600",
   },
   modalContainer: {
