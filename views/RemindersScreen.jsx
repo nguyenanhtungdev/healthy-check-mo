@@ -225,15 +225,38 @@ export default function RemindersScreen({ navigation }) {
       } else {
         const errorText = await response.text();
         console.error("Failed to update reminder:", response.status, errorText);
-        Alert.alert(
-          "Lỗi API",
-          `Server trả về lỗi ${response.status}: ${errorText}`
-        );
+        
+        // Parse error message from backend
+        let errorMessage = "Không thể cập nhật nhắc nhở";
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error && errorData.error.includes("đã được gửi")) {
+            Alert.alert(
+              "Không thể chỉnh sửa",
+              "Nhắc nhở này đã được gửi và không thể chỉnh sửa nữa.",
+              [{ text: "Đã hiểu", style: "default" }]
+            );
+          } else {
+            errorMessage = errorData.error || errorMessage;
+            Alert.alert("Lỗi cập nhật", errorMessage);
+          }
+        } catch (parseError) {
+          // If can't parse, show generic error
+          if (response.status === 404) {
+            Alert.alert(
+              "Không thể chỉnh sửa",
+              "Nhắc nhở này có thể đã được gửi hoặc không tồn tại.",
+              [{ text: "Đã hiểu", style: "default" }]
+            );
+          } else {
+            Alert.alert("Lỗi cập nhật", errorMessage);
+          }
+        }
         return false;
       }
     } catch (error) {
       console.error("Error updating reminder:", error);
-      Alert.alert("Lỗi kết nối", error.message);
+      Alert.alert("Lỗi kết nối", "Không thể kết nối đến server. Vui lòng thử lại.");
       return false;
     }
   };
@@ -386,15 +409,45 @@ export default function RemindersScreen({ navigation }) {
       } else {
         const errorText = await response.text();
         console.error("Failed to delete reminder:", response.status, errorText);
-        Alert.alert(
-          "Lỗi API",
-          `Server trả về lỗi ${response.status}: ${errorText}`
-        );
+        
+        // Parse error message from backend
+        let errorMessage = "Không thể xóa nhắc nhở";
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error && errorData.error.includes("đã được gửi")) {
+            Alert.alert(
+              "Không thể xóa",
+              "Nhắc nhở này đã được gửi và không thể xóa nữa. Bạn có thể tạo nhắc nhở mới thay thế.",
+              [
+                { text: "Tạo mới", onPress: () => {
+                  setEditing(null);
+                  resetForm();
+                  setModalVisible(true);
+                }, style: "default" },
+                { text: "Đóng", style: "cancel" }
+              ]
+            );
+          } else {
+            errorMessage = errorData.error || errorMessage;
+            Alert.alert("Lỗi xóa", errorMessage);
+          }
+        } catch (parseError) {
+          // If can't parse, show generic error
+          if (response.status === 404) {
+            Alert.alert(
+              "Không thể xóa",
+              "Nhắc nhở này có thể đã được gửi hoặc không tồn tại.",
+              [{ text: "Đã hiểu", style: "default" }]
+            );
+          } else {
+            Alert.alert("Lỗi xóa", errorMessage);
+          }
+        }
         return false;
       }
     } catch (error) {
       console.error("Error deleting reminder:", error);
-      Alert.alert("Lỗi kết nối", error.message);
+      Alert.alert("Lỗi kết nối", "Không thể kết nối đến server. Vui lòng thử lại.");
       return false;
     }
   };

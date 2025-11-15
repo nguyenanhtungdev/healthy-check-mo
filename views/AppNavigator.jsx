@@ -14,6 +14,7 @@ import FamilyHealthScreen from "./FamilyHealthScreen";
 import WellnessTrackerScreen from "./WellnessTrackerScreen";
 import AppointmentDetailScreen from "./AppointmentDetailScreen";
 import RemindersScreen from "./RemindersScreen";
+import AIChatScreen from "./AIChatScreen";
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -126,6 +127,8 @@ const TabNavigator = ({ onLogout, navigation: parentNavigation }) => {
             iconName = focused ? "home" : "home-outline";
           } else if (route.name === "Family") {
             iconName = focused ? "people" : "people-outline";
+          } else if (route.name === "AIChat") {
+            iconName = focused ? "sparkles" : "sparkles-outline";
           } else if (route.name === "Notification") {
             iconName = focused ? "notifications" : "notifications-outline";
           } else if (route.name === "WellnessTracker") {
@@ -140,7 +143,7 @@ const TabNavigator = ({ onLogout, navigation: parentNavigation }) => {
             >
               <Ionicons
                 name={iconName}
-                size={24}
+                size={20}
                 color={focused ? "#fff" : "#666"}
               />
               {/* Notification Badge */}
@@ -165,6 +168,11 @@ const TabNavigator = ({ onLogout, navigation: parentNavigation }) => {
         name="Family"
         component={FamilyHealthScreen}
         options={{ tabBarLabel: "Gia đình" }}
+      />
+      <Tab.Screen
+        name="AIChat"
+        component={AIChatScreen}
+        options={{ tabBarLabel: "AI Chat" }}
       />
       <Tab.Screen
         name="WellnessTracker"
@@ -211,14 +219,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
   },
   tabBarLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "600",
     marginTop: 4,
   },
   iconWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 24,
+    width: 28,
+    height: 28,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f3f4f6",

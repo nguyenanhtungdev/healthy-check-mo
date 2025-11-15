@@ -13,6 +13,7 @@ import AboutScreen from "./views/AboutScreen";
 import PrivacyScreen from "./views/PrivacyScreen";
 import RemindersScreen from "./views/RemindersScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import sleepTracker from "./services/sleepTracker";
 
 // Minimal JWT decode for payload without verifying signature.
 function decodeJwtPayload(token) {
@@ -53,6 +54,15 @@ function decodeJwtPayload(token) {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [checkingAuth, setCheckingAuth] = React.useState(true);
+
+  React.useEffect(() => {
+    // Initialize sleep tracker
+    sleepTracker.initialize();
+
+    return () => {
+      sleepTracker.cleanup();
+    };
+  }, []);
 
   React.useEffect(() => {
     (async () => {
