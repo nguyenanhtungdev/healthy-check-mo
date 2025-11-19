@@ -1,5 +1,11 @@
 Local env and Expo config
 
+## 🎥 Video Demo
+
+Watch the app in action: [https://youtu.be/6B8Hcp39ksw](https://youtu.be/6B8Hcp39ksw)
+
+---
+
 This project reads API_BASE from Expo's `extra` config. `app.config.js` will try the following (in order):
 
 1. `process.env.API_BASE` (useful for CI or running `API_BASE=... expo start`)
